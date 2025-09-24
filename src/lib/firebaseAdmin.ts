@@ -33,3 +33,4 @@ export function getAdminApp() {
 export function getDb() {
   return getAdminApp().firestore();
 }
+
