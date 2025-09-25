@@ -12,8 +12,6 @@ export default function Home() {
           height={38}
           priority
         />
-        <p className="text-center text-sm text-green-600">Build check: it works 🎉</p>
-
         <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
           <li className="mb-2 tracking-[-.01em]">
             Get started by editing{" "}
