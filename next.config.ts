@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
+import withPWA from "next-pwa";
 
 const nextConfig: NextConfig = {
-  // Skip lint and type errors in Vercel builds
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -10,4 +10,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withPWA({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development", // only disable in dev
+})(nextConfig);

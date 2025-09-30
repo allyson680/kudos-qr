@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const tar = tarSnap.data() as any;
 
     // Walsh-only rule
-    if (rep.companyId !== "c-walsh") {
+    if (rep.companyId !== "WALSH") {
       return NextResponse.json({ ok:false, error:"Only Walsh can submit Good Catch" }, { status:403 });
     }
 

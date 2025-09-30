@@ -1,5 +1,7 @@
 import fs from "fs";
 import path from "path";
+import { queueVote } from "@/lib/offlineQueue";
+import { trySyncVotes } from "@/lib/syncVotes";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const WORKERS_PATH = path.join(DATA_DIR, "workers.json");
@@ -66,4 +68,25 @@ export function countCompanyThisWindow(companyId: string, project: string, now =
   // window = 1st → last Wed (exclusive)
   // We store monthKey on all votes; monthKey rollovers automatically each month.
   return votes.filter(v => v.companyId === companyId && v.project === project && v.monthKey === mk).length;
+}
+
+async function castVote(voterCode: string, targetCode: string, project: "NBK" | "JP", memo = "") {
+  // Try online first
+  try {
+    const res = await fetch("/api/vote", {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ voter_code: voterCode, target_code: targetCode, project, memo })
+    });
+    if (res.ok) return { ok: true, queued: false };
+    // If server blocks (limits), surface message and don't queue
+    const j = await res.json().catch(() => ({}));
+    return { ok: false, error: j?.error || "Server rejected vote" };
+  } catch {
+    // Offline → queue locally and show success
+    await queueVote({ voterCode, targetCode, project, memo });
+    // Try to sync immediately (no-op if still offline)
+    trySyncVotes();
+    return { ok: true, queued: true };
+  }
 }
