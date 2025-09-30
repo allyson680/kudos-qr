@@ -1,15 +1,16 @@
+// src/app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import dynamic from "next/dynamic";
 import "./globals.css";
 
-const PwaRegistrar = dynamic(() => import("@/components/PwaRegistrar"), { ssr: false });
-const InstallPromptButton = dynamic(() => import("@/components/InstallPromptButton"), { ssr: false });
+import PwaRegistrar from "@/components/PwaRegistrar";
+import InstallPromptButton from "@/components/InstallPromptButton";
 
 export const metadata: Metadata = {
   title: "Token of Excellence",
   applicationName: "Token of Excellence",
   description: "Scan a sticker and give virtual tokens.",
-   manifest: "/manifest.json",
+  // make sure this matches your file name in /public
+  manifest: "/manifest.json",
   themeColor: "#111111",
   icons: {
     icon: [
@@ -17,8 +18,8 @@ export const metadata: Metadata = {
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icons/icon-192.png" },
+      { url: "/icons/icon-512.png" },
     ],
   },
   appleWebApp: {
@@ -29,8 +30,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
+  themeColor: "#111111",
   viewportFit: "cover",
 };
 
