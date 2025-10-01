@@ -320,9 +320,6 @@ export default function VotePageClient() {
               <span className="font-semibold">{voterName || voterCode}</span>,
               who would you like to give a virtual token to?
             </p>
-            <div className="mt-3 flex justify-center">
-              <TypeBadge type={voteType} />
-            </div>
           </div>
 
           {/* Walsh-only: choose the token type (wrap TypeBadge in clickable buttons; no extra props needed) */}
@@ -351,7 +348,7 @@ export default function VotePageClient() {
                 </button>
               </div>
               <p className="text-xs text-center text-gray-500">
-                Tap a token above, then scan or search your coworker.
+                Tap a token above, then scan your coworker or use search box below.
               </p>
             </>
           ) : (
@@ -359,8 +356,7 @@ export default function VotePageClient() {
               <TypeBadge type="token" />
             </div>
           )}
-
-          <p className="text-sm text-gray-600">Scan coworker or use search box below.</p>
+         
           <QrScanner
             onScan={(t) => t && setTarget(t)}
             onError={(e) => setMsg(e.message)}
@@ -371,7 +367,7 @@ export default function VotePageClient() {
   <label className="text-sm text-gray-600">Search by name or code</label>
   <input
     className="w-full border rounded p-2"
-    placeholder="e.g., Maria or NBK12 / JP010"
+    placeholder="e.g., Chris, nbk2/JP01"
     value={query}
     onChange={(e) => setQuery(e.target.value)}
     onKeyDown={(e) => {
@@ -425,12 +421,7 @@ export default function VotePageClient() {
     </ul>
   ) : filterCompanyId || query.trim() ? (
     <p className="text-sm text-gray-500">No matches found.</p>
-  ) : (
-    <p className="text-xs text-gray-500">
-      Search by name or code.
-      <br />
-      (e.g., Chris or nbk2/JP01)
-    </p>
+  ) : (null    
   )}
 </div>
         </section>

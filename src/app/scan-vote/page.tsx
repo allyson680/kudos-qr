@@ -314,7 +314,7 @@ export default function ScanVotePage() {
             </div>
           )}
 
-          <p className="text-sm text-gray-600">Scan coworker or type code.</p>
+          <p className="text-sm text-gray-600">Scan coworker or use search box below.</p>
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3] bg-black/5">
@@ -327,7 +327,7 @@ export default function ScanVotePage() {
             <div className="flex gap-2">
               <input
                 className="flex-1 border rounded p-2"
-                placeholder="Search by name or code (e.g., Maria, NBK12)"
+                placeholder="Search by name or code (e.g., Chris, nbk2/JP01)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -375,11 +375,7 @@ export default function ScanVotePage() {
               </ul>
             ) : filterCompanyId || query.trim() ? (
               <p className="text-sm text-gray-500">No matches found.</p>
-            ) : (
-              <p className="text-xs text-gray-500">Search by name or code.
-              <br />
-              (e.g., Chris or nbk2/JP01)
-              </p>
+            ) : (null             
             )}
           </div>
         </section>

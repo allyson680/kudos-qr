@@ -514,9 +514,6 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 Hello <b>{fullName || voterCode}</b>, who would you like to give
                 a virtual token to?
               </p>
-              <div className="mt-3 flex justify-center">
-                <TypeBadge type={voteType} />
-              </div>
             </div>
 
             <div className="rounded border overflow-hidden">
@@ -550,7 +547,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
               <div className="flex gap-2">
                 <input
                   className="flex-1 border rounded p-2"
-                  placeholder="Search by name or code (e.g., Maria, NBK12)"
+                  placeholder="Search by name or code (e.g., Chris, nbk2/JP01)"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -603,13 +600,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 </ul>
               ) : filterCompanyId || query.trim() ? (
                 <p className="text-sm text-gray-500">No matches found.</p>
-              ) : (
-                <p className="text-xs text-gray-500">
-                  Search by name or code.
-                  <br />
-                  (e.g., Chris or nbk1/JP01)
-                </p>
-              )}
+              ) : null}
             </div>
 
             {feedback && <p className="text-sm text-center">{feedback}</p>}
