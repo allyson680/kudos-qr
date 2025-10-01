@@ -1,4 +1,6 @@
+// src/Company/QRScanner.tsx
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 
 let QrScannerLib: typeof import("qr-scanner").default | null = null;
@@ -12,11 +14,11 @@ export default function QRScanner({
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scannerRef = useRef<any>(null);
-  const hasScannedRef = useRef(false);              // NEW
+  const hasScannedRef = useRef(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    hasScannedRef.current = false;                  // NEW
+    hasScannedRef.current = false;
     let stopped = false;
     let stream: MediaStream | null = null;
 
@@ -44,10 +46,10 @@ export default function QRScanner({
         const scanner = new QrScannerLib(
           videoRef.current,
           (res: any) => {
-            if (hasScannedRef.current) return;      // NEW
+            if (hasScannedRef.current) return;
             const text = typeof res === "string" ? res : res?.data ?? null;
             if (text) {
-              hasScannedRef.current = true;         // NEW
+              hasScannedRef.current = true;
               onScan(text);
             }
           },
@@ -57,7 +59,8 @@ export default function QRScanner({
         await scanner.start();
       } catch (e: any) {
         const msg =
-          e?.message || "Camera error. You can type the code in the input on the page.";
+          e?.message ||
+          "Camera error. You can type the code in the input on the page.";
         setErrMsg(msg);
         onError?.(e);
       }
@@ -65,7 +68,7 @@ export default function QRScanner({
 
     return () => {
       stopped = true;
-      hasScannedRef.current = false;                // NEW
+      hasScannedRef.current = false;
       try {
         scannerRef.current?.stop();
         scannerRef.current?.destroy?.();
@@ -77,7 +80,13 @@ export default function QRScanner({
   return (
     <div className="space-y-2">
       <div className="aspect-[4/3] w-full bg-black rounded overflow-hidden">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted autoPlay />
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          playsInline
+          muted
+          autoPlay
+        />
       </div>
       {errMsg && <p className="text-sm text-red-600">{errMsg}</p>}
     </div>
