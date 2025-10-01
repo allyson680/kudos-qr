@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-const db = getDb();
+
 const TZ = "America/Los_Angeles";
 
 function fmt(now = new Date(), opts: Intl.DateTimeFormatOptions) {
@@ -36,6 +37,7 @@ function toIso(val: any): string {
 }
 
 export async function GET(_req: NextRequest) {
+  const db = getDb();
   try {
     const now = new Date();
     const dk = dayKey(now);

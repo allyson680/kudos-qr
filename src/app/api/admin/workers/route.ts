@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 import { normalizeSticker, toDashed } from "@/lib/codeUtils";
 
-const db = getDb();
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 export async function GET(req: NextRequest) {
+  const db = getDb();
   try {
     const companyId = (req.nextUrl.searchParams.get("companyId") || "").trim();
     const q = (req.nextUrl.searchParams.get("q") || "").trim();

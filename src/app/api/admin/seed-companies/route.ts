@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET() {
+  return NextResponse.json({ ok: true, hint: "POST to seed companies" });
+}
+
 export async function POST() {
   const db = getDb();
   const initial = [

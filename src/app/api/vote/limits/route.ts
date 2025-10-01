@@ -3,7 +3,8 @@ import { getDb } from "@/lib/firebaseAdmin";
 import { normalizeSticker } from "@/lib/codeUtils";
 
 export const runtime = "nodejs";
-const db = getDb();
+export const dynamic = "force-dynamic";
+
 
 const DAILY_MAX_PER_VOTER = 3;
 const MONTHLY_MAX_PER_COMPANY = 30;
@@ -25,17 +26,18 @@ function monthKeyUTC(d = new Date()) {
  * GET /api/vote/limits?voter=NBK0001[&companyId=WALSH]
  * - dailyRemaining: tokens the voter can still give today
  * - companyRemaining / companyMonthlyRemaining: tokens the given company can still receive this month (only if companyId provided)
- */
+*/
 export async function GET(req: NextRequest) {
+  const db = getDb();
   try {
     const rawVoter = req.nextUrl.searchParams.get("voter") || "";
     const voterCode = normalizeSticker(rawVoter);
     const companyId = (req.nextUrl.searchParams.get("companyId") || "").trim();
-
+    
     if (!voterCode) {
       return NextResponse.json({ ok: false, error: "Missing voter" }, { status: 400 });
     }
-
+    
     // --- Daily remaining for the voter ---
     const dayKey = dayKeyUTC();
     const voterRef = db.collection("vote_counters").doc(`voterDaily_${voterCode}_${dayKey}`);

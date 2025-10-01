@@ -4,20 +4,22 @@ import { FieldValue } from "firebase-admin/firestore";
 import { normalizeSticker, getProjectFromCode, toDashed } from "@/lib/codeUtils";
 
 export const runtime = "nodejs";
-
-const db = getDb();
+export const dynamic = "force-dynamic";
 
 /**
  * If the worker doc exists under a dashed id (e.g. NBK-0001), move it to no-dash (NBK0001).
  * Returns the final snap (under the canonical id) and a boolean flag if a migration happened.
  */
-async function migrateIfDashed(codeCanonical: string) {
+async function migrateIfDashed(
+  db: FirebaseFirestore.Firestore,
+  codeCanonical: string
+) {
   const canonicalRef = db.collection("workers").doc(codeCanonical);
   let snap = await canonicalRef.get();
   let migrated = false;
 
   if (!snap.exists) {
-    const dashedId = toDashed(codeCanonical);     // NBK0001 -> NBK-0001
+    const dashedId = toDashed(codeCanonical); // NBK0001 -> NBK-0001
     const dashedRef = db.collection("workers").doc(dashedId);
     const dashedSnap = await dashedRef.get();
 
@@ -39,6 +41,7 @@ async function migrateIfDashed(codeCanonical: string) {
  * GET /api/register?code=NBK1
  */
 export async function GET(req: NextRequest) {
+  const db = getDb();
   try {
     const raw = req.nextUrl.searchParams.get("code") || "";
     const code = normalizeSticker(raw); // NBK1 -> NBK0001
@@ -53,7 +56,7 @@ export async function GET(req: NextRequest) {
     // find existing worker; migrate dashed -> no-dash if needed
     let existing: Record<string, unknown> | null = null;
     if (code) {
-      const { snap, migrated } = await migrateIfDashed(code);
+      const { snap } = await migrateIfDashed(db, code);
       if (snap.exists) {
         existing = { code: snap.id, ...(snap.data() as Record<string, unknown>) };
         // ensure the code field itself is canonical (no dash)
@@ -88,12 +91,13 @@ export async function GET(req: NextRequest) {
  * - Also migrates any dashed doc to the canonical id.
  */
 export async function POST(req: NextRequest) {
+  const db = getDb();
   try {
     const body = await req.json();
 
     const code = normalizeSticker(String(body.code ?? ""));
     const fullName = String(body.fullName ?? "").trim();
-    const fullNameLower = fullName.toLowerCase(); // ← ADD
+    const fullNameLower = fullName.toLowerCase();
     const companyId = String(body.companyId ?? "").trim();
 
     if (!code || !fullName || !companyId) {
@@ -123,7 +127,7 @@ export async function POST(req: NextRequest) {
             code,
             project,
             fullName,
-            fullNameLower,            // ← ADD
+            fullNameLower,
             companyId,
             updatedAt: now,
           },
@@ -137,7 +141,7 @@ export async function POST(req: NextRequest) {
             code,
             project,
             fullName,
-            fullNameLower,            // ← ADD
+            fullNameLower,
             companyId,
             updatedAt: now,
           },
@@ -148,7 +152,7 @@ export async function POST(req: NextRequest) {
           code,
           project,
           fullName,
-          fullNameLower,              // ← ADD
+          fullNameLower,
           companyId,
           createdAt: now,
           updatedAt: now,

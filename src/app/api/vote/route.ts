@@ -1,3 +1,4 @@
+// src/app/api/vote/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -5,7 +6,7 @@ import { z } from "zod";
 import { normalizeSticker, toDashed, getProjectFromCode } from "@/lib/codeUtils";
 
 export const runtime = "nodejs";
-const db = getDb();
+export const dynamic = "force-dynamic";
 
 /** Limits */
 const WALSH_COMPANY_ID = "WALSH";
@@ -19,25 +20,28 @@ const BodySchema = z.object({
   voteType: z.enum(["token", "goodCatch"]).optional().default("token"),
 });
 
-/** Key helpers (UTC window; change if you want local TZ windows) */
+/** Key helpers (UTC window) */
 function dayKeyUTC(d = new Date()) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`; // e.g. 2025-09-27
+  return `${y}-${m}-${day}`;
 }
 function monthKeyUTC(d = new Date()) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`; // e.g. 2025-09
+  return `${y}-${m}`;
 }
 
-/** Simple notification write */
-async function createNotification(params: {
-  targetCode: string;
-  voteType: "token" | "goodCatch";
-  voterCode: string;
-}) {
+/** Simple notification write (now receives db) */
+async function createNotification(
+  db: FirebaseFirestore.Firestore,
+  params: {
+    targetCode: string;
+    voteType: "token" | "goodCatch";
+    voterCode: string;
+  }
+) {
   const { targetCode, voteType, voterCode } = params;
   const title =
     voteType === "goodCatch" ? "You received a Good Catch!" : "You received a Token!";
@@ -58,6 +62,7 @@ async function createNotification(params: {
 }
 
 export async function POST(req: NextRequest) {
+  const db = getDb();
   try {
     // Validate body
     const json = await req.json();
@@ -106,7 +111,10 @@ export async function POST(req: NextRequest) {
 
     // No same-company voting
     if (voter.companyId === target.companyId) {
-      return NextResponse.json({ ok: false, error: "No same-company voting" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No same-company voting" },
+        { status: 400 }
+      );
     }
 
     // Same-project only
@@ -143,7 +151,7 @@ export async function POST(req: NextRequest) {
 
     const voteRef = db.collection("votes").doc();
 
-    // Pre-read counts once (used for Good Catch return & token baseline)
+    // Pre-read counts once (used for GC response & token baseline)
     const [vdSnapPre, cmSnapPre] = await Promise.all([
       voterDailyRef.get(),
       companyMonthlyRef.get(),
@@ -159,6 +167,9 @@ export async function POST(req: NextRequest) {
           targetCode: targetCodeNorm,
           voterCompanyId: voter.companyId,
           targetCompanyId: target.companyId,
+          // 👇 add these so Admin Summary works
+          companyId: voter.companyId,
+          project: voterProject,
           voteType: "goodCatch",
           createdAt: FieldValue.serverTimestamp(),
           dayKey,
@@ -175,6 +186,12 @@ export async function POST(req: NextRequest) {
         MONTHLY_MAX_PER_COMPANY - currMonthly
       );
 
+      await createNotification(db, {
+        targetCode: targetCodeNorm,
+        voteType: "goodCatch",
+        voterCode: voterCodeNorm,
+      });
+
       const message =
         `Good Catch for ${displayName || targetCodeNorm} (${targetCodeNorm}) recorded. ` +
         `Good Catches don’t count against daily or monthly token limits. ` +
@@ -183,13 +200,6 @@ export async function POST(req: NextRequest) {
           companyMonthlyRemaining === 1 ? "" : "s"
         } left this month.`;
 
-      // optional notify
-      await createNotification({
-        targetCode: targetCodeNorm,
-        voteType: "goodCatch",
-        voterCode: voterCodeNorm,
-      });
-
       return NextResponse.json({
         ok: true,
         voteType: "goodCatch",
@@ -197,7 +207,7 @@ export async function POST(req: NextRequest) {
         target: niceTarget,
         dailyRemaining,
         companyMonthlyRemaining,
-        companyRemaining: companyMonthlyRemaining, // short alias for FE
+        companyRemaining: companyMonthlyRemaining, // alias for FE
       });
     }
 
@@ -229,6 +239,9 @@ export async function POST(req: NextRequest) {
         targetCode: targetCodeNorm,
         voterCompanyId: voter.companyId,
         targetCompanyId: target.companyId,
+        // 👇 add fields needed by admin reports
+        companyId: voter.companyId,
+        project: voterProject,
         voteType: "token",
         createdAt: FieldValue.serverTimestamp(),
         dayKey,
@@ -271,19 +284,18 @@ export async function POST(req: NextRequest) {
     const displayName = (target.fullName || "").trim();
     const niceTarget = { code: targetCodeNorm, fullName: displayName };
 
+    await createNotification(db, {
+      targetCode: targetCodeNorm,
+      voteType: "token",
+      voterCode: voterCodeNorm,
+    });
+
     const message =
       `Your virtual token has been given to ${displayName || targetCodeNorm} (${targetCodeNorm}). ` +
       `You have ${dailyRemaining} token${dailyRemaining === 1 ? "" : "s"} left today. ` +
       `Your company has ${companyMonthlyRemaining} token${
         companyMonthlyRemaining === 1 ? "" : "s"
       } left this month.`;
-
-    // optional notify
-    await createNotification({
-      targetCode: targetCodeNorm,
-      voteType: "token",
-      voterCode: voterCodeNorm,
-    });
 
     return NextResponse.json({
       ok: true,
@@ -292,7 +304,7 @@ export async function POST(req: NextRequest) {
       target: niceTarget,
       dailyRemaining,
       companyMonthlyRemaining,
-      companyRemaining: companyMonthlyRemaining, // short alias for FE
+      companyRemaining: companyMonthlyRemaining, // alias for FE
     });
   } catch (e: any) {
     const msg = String(e?.message || "");
@@ -313,9 +325,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    return NextResponse.json(
-      { ok: false, error: "Vote failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Vote failed" }, { status: 500 });
   }
 }
