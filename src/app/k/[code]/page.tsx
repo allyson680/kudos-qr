@@ -605,7 +605,9 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 <p className="text-sm text-gray-500">No matches found.</p>
               ) : (
                 <p className="text-xs text-gray-500">
-                  Tip: filter by company or search a name/code.
+                  Search by name or code.
+                  <br />
+                  (e.g., Chris or nbk1/JP01)
                 </p>
               )}
             </div>

@@ -287,9 +287,6 @@ export default function ScanVotePage() {
                         <span className="font-semibold">{voterName || voterCode}</span>,
                         who would you like to give a virtual token to?
                       </p>
-                      <div className="mt-3 flex justify-center">
-                        <TypeBadge type={voteType} />
-                      </div>
                     </div>
 
           {/* Walsh-only: choose the token type here */}
@@ -323,20 +320,6 @@ export default function ScanVotePage() {
             <div className="aspect-[4/3] bg-black/5">
               <QrScanner onScan={(t) => t && fetchTargetInfo(t)} onError={(e) => setMsg(e.message)} />
             </div>
-          </div>
-
-          <div className="flex gap-2">
-            <input
-              className="flex-1 border rounded p-2"
-              placeholder="Coworker code (e.g., NBK2 / JP010)"
-              value={targetCode}
-              onChange={(e) => setTargetCode(e.target.value)}
-              inputMode="text"
-              autoCapitalize="characters"
-            />
-            <button className="px-4 rounded bg-black text-white" onClick={() => fetchTargetInfo(targetCode)}>
-              Next
-            </button>
           </div>
 
           {/* Search & Filter */}
@@ -393,7 +376,10 @@ export default function ScanVotePage() {
             ) : filterCompanyId || query.trim() ? (
               <p className="text-sm text-gray-500">No matches found.</p>
             ) : (
-              <p className="text-xs text-gray-500">Tip: filter by company or search a name/code.</p>
+              <p className="text-xs text-gray-500">Search by name or code.
+              <br />
+              (e.g., Chris or nbk2/JP01)
+              </p>
             )}
           </div>
         </section>

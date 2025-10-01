@@ -360,91 +360,79 @@ export default function VotePageClient() {
             </div>
           )}
 
-          <p className="text-sm text-gray-600">Scan coworker or type code.</p>
+          <p className="text-sm text-gray-600">Scan coworker or use search box below.</p>
           <QrScanner
             onScan={(t) => t && setTarget(t)}
             onError={(e) => setMsg(e.message)}
           />
 
-          <div className="flex gap-2">
-            <input
-              className="flex-1 border rounded p-2"
-              placeholder="Coworker code (e.g., nbk2 / JP010)"
-              value={targetCode}
-              onChange={(e) => setTargetCode(e.target.value)}
-            />
-            <button
-              className="px-4 rounded bg-black text-white"
-              onClick={() => setTarget(targetCode)}
-            >
-              Next
-            </button>
-          </div>
+          {/* 🔎 Search & Filter — single column, full width */}
+<div className="rounded border p-3 space-y-2">
+  <label className="text-sm text-gray-600">Search by name or code</label>
+  <input
+    className="w-full border rounded p-2"
+    placeholder="e.g., Maria or NBK12 / JP010"
+    value={query}
+    onChange={(e) => setQuery(e.target.value)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter") {
+        // If they typed an exact sticker code, jump straight to confirm
+        const maybeCode = normalizeSticker(query);
+        if (maybeCode) setTarget(query);
+      }
+    }}
+  />
 
-          {/* Search & Filter */}
-          <div className="rounded border p-3 space-y-2">
-            <div className="flex gap-2">
-              <input
-                className="flex-1 border rounded p-2"
-                placeholder="Search by name or code (e.g., Maria, NBK12)"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-              <select
-                className="border rounded p-2"
-                value={filterCompanyId}
-                onChange={(e) => setFilterCompanyId(e.target.value)}
-                title="Filter by company"
-              >
-                <option value="">All companies</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+  <label className="text-sm text-gray-600">Filter by company</label>
+  <select
+    className="w-full border rounded p-2"
+    value={filterCompanyId}
+    onChange={(e) => setFilterCompanyId(e.target.value)}
+    title="Filter by company"
+  >
+    <option value="">All companies</option>
+    {companies.map((c) => (
+      <option key={c.id} value={c.id}>
+        {c.name}
+      </option>
+    ))}
+  </select>
 
-            {isSearching ? (
-              <p className="text-sm text-gray-500">Searching…</p>
-            ) : results.length ? (
-              <ul className="divide-y border rounded">
-                {results.map((w) => (
-                  <li
-                    key={w.code}
-                    className="flex items-center justify-between p-2"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {w.fullName || "(no name yet)"}
-                      </div>
-                      <div className="text-xs text-gray-600">{w.code}</div>
-                    </div>
-                    <button
-                      className="px-3 py-1 rounded bg-black text-white"
-                      onClick={() => {
-                        if (getProjectFromCode(w.code) !== voterProject) {
-                          setMsg("Same-project only (NBK→NBK, JP→JP)");
-                          return;
-                        }
-                        setTargetCode(w.code);
-                        setTargetName(w.fullName || "");
-                        setStep("confirm");
-                      }}
-                    >
-                      Select
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : filterCompanyId || query.trim() ? (
-              <p className="text-sm text-gray-500">No matches found.</p>
-            ) : (
-              <p className="text-xs text-gray-500">
-                Tip: filter by company or search a name/code.
-              </p>
-            )}
+  {isSearching ? (
+    <p className="text-sm text-gray-500">Searching…</p>
+  ) : results.length ? (
+    <ul className="divide-y border rounded">
+      {results.map((w) => (
+        <li key={w.code} className="flex items-center justify-between p-2">
+          <div>
+            <div className="font-medium">{w.fullName || "(no name yet)"}</div>
+            <div className="text-xs text-gray-600">{w.code}</div>
           </div>
+          <button
+            className="px-3 py-1 rounded bg-black text-white"
+            onClick={() => {
+              if (getProjectFromCode(w.code) !== voterProject) {
+                setMsg("Same-project only (NBK→NBK, JP→JP)");
+                return;
+              }
+              setTarget(w.code);
+            }}
+          >
+            Select
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : filterCompanyId || query.trim() ? (
+    <p className="text-sm text-gray-500">No matches found.</p>
+  ) : (
+    <p className="text-xs text-gray-500">
+      Search by name or code.
+      <br />
+      (e.g., Chris or nbk2/JP01)
+    </p>
+  )}
+</div>
         </section>
       )}
 
