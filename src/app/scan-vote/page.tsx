@@ -281,11 +281,16 @@ export default function ScanVotePage() {
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          <div className="rounded border p-3 bg-gray-50">
-            <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
-            </p>
-          </div>
+          <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
+                      <p className="text-sm leading-relaxed">
+                        Hello{" "}
+                        <span className="font-semibold">{voterName || voterCode}</span>,
+                        who would you like to give a virtual token to?
+                      </p>
+                      <div className="mt-3 flex justify-center">
+                        <TypeBadge type={voteType} />
+                      </div>
+                    </div>
 
           {/* Walsh-only: choose the token type here */}
           {isWalsh ? (

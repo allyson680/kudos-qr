@@ -25,9 +25,9 @@ export default function VotePageClient() {
   const qs = useSearchParams();
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
-    | "token"
-    | "goodCatch";
+  const typeFromQS = (
+    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
+  ) as "token" | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -35,7 +35,10 @@ export default function VotePageClient() {
   const [voterCode, setVoterCode] = useState(voterFromQS);
   const [voterName, setVoterName] = useState("");
   const [voterCompanyId, setVoterCompanyId] = useState("");
-  const voterProject = useMemo(() => getProjectFromCode(voterCode), [voterCode]);
+  const voterProject = useMemo(
+    () => getProjectFromCode(voterCode),
+    [voterCode]
+  );
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
 
   // type (Walsh only)
@@ -136,7 +139,9 @@ export default function VotePageClient() {
 
     const w = await apiLookup(code);
     if (!w) {
-      setMsg("We couldn't find that sticker. Ask your coworker to register first.");
+      setMsg(
+        "We couldn't find that sticker. Ask your coworker to register first."
+      );
       return;
     }
 
@@ -173,7 +178,10 @@ export default function VotePageClient() {
           lockOut("company");
           return;
         }
-        if (typeof json.dailyRemaining === "number" && json.dailyRemaining <= 0) {
+        if (
+          typeof json.dailyRemaining === "number" &&
+          json.dailyRemaining <= 0
+        ) {
           lockOut("daily");
           return;
         }
@@ -260,7 +268,8 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded border p-4 bg-gray-50 text-center">
             <p className="text-base font-medium">
-              {lockMsg || "You’ve hit the limit for now. Please try again later."}
+              {lockMsg ||
+                "You’ve hit the limit for now. Please try again later."}
             </p>
           </div>
         </section>
@@ -276,9 +285,14 @@ export default function VotePageClient() {
       {/* STEP 1 — voter */}
       {step === "voter" && (
         <section className="space-y-3">
-          <p className="text-sm text-gray-600">Scan your sticker, or type it.</p>
+          <p className="text-sm text-gray-600">
+            Scan your sticker, or type it.
+          </p>
 
-          <QrScanner onScan={(t) => t && setVoter(t)} onError={(e) => setMsg(e.message)} />
+          <QrScanner
+            onScan={(t) => t && setVoter(t)}
+            onError={(e) => setMsg(e.message)}
+          />
 
           <div className="flex gap-2">
             <input
@@ -287,7 +301,10 @@ export default function VotePageClient() {
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
             />
-            <button className="px-4 rounded bg-black text-white" onClick={() => setVoter(voterCode)}>
+            <button
+              className="px-4 rounded bg-black text-white"
+              onClick={() => setVoter(voterCode)}
+            >
               Next
             </button>
           </div>
@@ -297,10 +314,15 @@ export default function VotePageClient() {
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          <div className="rounded border p-3 bg-gray-50">
-            <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to vote for?
+          <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
+            <p className="text-sm leading-relaxed">
+              Hello{" "}
+              <span className="font-semibold">{voterName || voterCode}</span>,
+              who would you like to give a virtual token to?
             </p>
+            <div className="mt-3 flex justify-center">
+              <TypeBadge type={voteType} />
+            </div>
           </div>
 
           {/* Walsh-only: choose the token type (wrap TypeBadge in clickable buttons; no extra props needed) */}
@@ -320,7 +342,9 @@ export default function VotePageClient() {
                   aria-pressed={voteType === "goodCatch"}
                   onClick={() => setVoteType("goodCatch")}
                   className={`rounded-full p-1 border ${
-                    voteType === "goodCatch" ? "ring-2 ring-black" : "opacity-90"
+                    voteType === "goodCatch"
+                      ? "ring-2 ring-black"
+                      : "opacity-90"
                   }`}
                 >
                   <TypeBadge type="goodCatch" />
@@ -337,7 +361,10 @@ export default function VotePageClient() {
           )}
 
           <p className="text-sm text-gray-600">Scan coworker or type code.</p>
-          <QrScanner onScan={(t) => t && setTarget(t)} onError={(e) => setMsg(e.message)} />
+          <QrScanner
+            onScan={(t) => t && setTarget(t)}
+            onError={(e) => setMsg(e.message)}
+          />
 
           <div className="flex gap-2">
             <input
@@ -346,7 +373,10 @@ export default function VotePageClient() {
               value={targetCode}
               onChange={(e) => setTargetCode(e.target.value)}
             />
-            <button className="px-4 rounded bg-black text-white" onClick={() => setTarget(targetCode)}>
+            <button
+              className="px-4 rounded bg-black text-white"
+              onClick={() => setTarget(targetCode)}
+            >
               Next
             </button>
           </div>
@@ -380,9 +410,14 @@ export default function VotePageClient() {
             ) : results.length ? (
               <ul className="divide-y border rounded">
                 {results.map((w) => (
-                  <li key={w.code} className="flex items-center justify-between p-2">
+                  <li
+                    key={w.code}
+                    className="flex items-center justify-between p-2"
+                  >
                     <div>
-                      <div className="font-medium">{w.fullName || "(no name yet)"}</div>
+                      <div className="font-medium">
+                        {w.fullName || "(no name yet)"}
+                      </div>
                       <div className="text-xs text-gray-600">{w.code}</div>
                     </div>
                     <button
@@ -405,7 +440,9 @@ export default function VotePageClient() {
             ) : filterCompanyId || query.trim() ? (
               <p className="text-sm text-gray-500">No matches found.</p>
             ) : (
-              <p className="text-xs text-gray-500">Tip: filter by company or search a name/code.</p>
+              <p className="text-xs text-gray-500">
+                Tip: filter by company or search a name/code.
+              </p>
             )}
           </div>
         </section>
@@ -416,14 +453,22 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded border p-3 bg-gray-50">
             <p className="text-sm">
-              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              Confirm token is for{" "}
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
+              ?
             </p>
           </div>
           <div className="flex gap-2">
-            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => setStep("target")}
+            >
               Cancel
             </button>
-            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
+            <button
+              className="flex-1 py-2 rounded bg-black text-white"
+              onClick={submitVote}
+            >
               Confirm
             </button>
           </div>
@@ -438,7 +483,10 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <p className="text-center">{msg}</p>
           <div className="flex gap-2">
-            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => setStep("target")}
+            >
               Vote again
             </button>
           </div>

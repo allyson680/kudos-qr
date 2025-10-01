@@ -509,8 +509,8 @@ export default function CodePage({ params }: { params: { code: string } }) {
         {/* STEP 2 — target */}
         {step === "target" && (
           <>
-            <div className="rounded border p-3 bg-gray-50">
-              <p className="text-sm">
+            <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
+              <p className="text-sm leading-relaxed">
                 Hello <b>{fullName || voterCode}</b>, who would you like to give
                 a virtual token to?
               </p>
@@ -522,7 +522,9 @@ export default function CodePage({ params }: { params: { code: string } }) {
             <div className="rounded border overflow-hidden">
               <div className="aspect-[4/3] bg-black/5">
                 <QrScanner
-                  onScan={(text: string | null) => text && fetchTargetInfo(text)}
+                  onScan={(text: string | null) =>
+                    text && fetchTargetInfo(text)
+                  }
                   onError={(err: Error) => setFeedback(err.message)}
                 />
               </div>
