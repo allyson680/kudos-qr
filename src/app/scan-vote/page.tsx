@@ -1,14 +1,15 @@
+// src/app/scan-vote/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
 import {
   getNextOutOfTokensMessage,
   getNextCompanyCapMessage,
 } from "@/lib/outOfTokens";
-import { useRouter } from "next/navigation";
 
 type Worker = { code: string; fullName: string; companyId: string };
 type Company = { id: string; name: string };
@@ -21,6 +22,8 @@ type LockKind = "daily" | "company";
 
 export default function ScanVotePage() {
   const router = useRouter();
+
+  // step
   const [step, setStep] = useState<Step>("voter");
 
   // voter
@@ -33,7 +36,7 @@ export default function ScanVotePage() {
   );
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
 
-  // type (Walsh only)
+  // vote type (Walsh only)
   const [voteType, setVoteType] = useState<"token" | "goodCatch">("token");
 
   // target
@@ -47,19 +50,17 @@ export default function ScanVotePage() {
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // ui messages
   const [msg, setMsg] = useState("");
 
-  type LockKind = "daily" | "company";
-
-  const [dailyLocked, setDailyLocked] = useState(false);
+  // locks
+  const [locked, setLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
   const lockOut = (kind: LockKind = "daily") => {
-    setDailyLocked(true);
+    setLocked(true);
     setLockMsg(
-      kind === "company"
-        ? getNextCompanyCapMessage()
-        : getNextOutOfTokensMessage()
+      kind === "company" ? getNextCompanyCapMessage() : getNextOutOfTokensMessage()
     );
   };
 
@@ -81,29 +82,23 @@ export default function ScanVotePage() {
       });
       const j = await r.json();
       if (j?.ok) {
-        if (typeof j.companyRemaining === "number" && j.companyRemaining <= 0) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof j.companyMonthlyRemaining === "number" &&
-          j.companyMonthlyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
-        if (typeof j.dailyRemaining === "number" && j.dailyRemaining <= 0) {
-          lockOut("daily");
-          return;
-        }
-        setDailyLocked(false);
+        const comp =
+          typeof j.companyRemaining === "number"
+            ? j.companyRemaining
+            : j.companyMonthlyRemaining;
+        if (typeof comp === "number" && comp <= 0) return lockOut("company");
+        if (typeof j.dailyRemaining === "number" && j.dailyRemaining <= 0)
+          return lockOut("daily");
+        setLocked(false);
       } else {
-        setDailyLocked(false);
+        setLocked(false);
       }
     } catch {
-      setDailyLocked(false);
+      setLocked(false);
     }
   }
+
+  // ── handlers ────────────────────────────────────────────────────────────────
 
   async function fetchVoterInfo(raw: string) {
     setMsg("");
@@ -123,7 +118,7 @@ export default function ScanVotePage() {
 
     setVoterName(w.fullName ?? "");
     setVoterCompanyId(w.companyId ?? "");
-    await checkLimits(code);
+    await checkLimits(code, w.companyId ?? "");
     setStep("target");
   }
 
@@ -141,9 +136,7 @@ export default function ScanVotePage() {
     // Require existing target
     const w = await apiLookup(code);
     if (!w) {
-      setMsg(
-        "We couldn't find that sticker. Ask your coworker to register first."
-      );
+      setMsg("We couldn't find that sticker. Ask your coworker to register first.");
       return;
     }
 
@@ -166,27 +159,13 @@ export default function ScanVotePage() {
       const json = await res.json();
 
       if (json.ok) {
-        if (
-          typeof json.companyRemaining === "number" &&
-          json.companyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof json.companyMonthlyRemaining === "number" &&
-          json.companyMonthlyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof json.dailyRemaining === "number" &&
-          json.dailyRemaining <= 0
-        ) {
-          lockOut("daily");
-          return;
-        }
+        const comp =
+          typeof json.companyRemaining === "number"
+            ? json.companyRemaining
+            : json.companyMonthlyRemaining;
+        if (typeof comp === "number" && comp <= 0) return lockOut("company");
+        if (typeof json.dailyRemaining === "number" && json.dailyRemaining <= 0)
+          return lockOut("daily");
 
         const code = json.target?.code || targetCode;
         const name = (json.target?.fullName || targetName || "").trim();
@@ -194,14 +173,8 @@ export default function ScanVotePage() {
         setStep("done");
       } else {
         const err = (json.error || "").toLowerCase();
-        if (err.includes("company")) {
-          lockOut("company");
-          return;
-        }
-        if (err.includes("daily")) {
-          lockOut("daily");
-          return;
-        }
+        if (err.includes("company")) return lockOut("company");
+        if (err.includes("daily")) return lockOut("daily");
         setMsg(json.error || "Error");
         setStep("target");
       }
@@ -210,6 +183,8 @@ export default function ScanVotePage() {
       setStep("target");
     }
   }
+
+  // ── effects ────────────────────────────────────────────────────────────────
 
   // Load companies when entering target step (for filter dropdown)
   useEffect(() => {
@@ -254,15 +229,14 @@ export default function ScanVotePage() {
     };
   }, [step, filterCompanyId, query]);
 
-  // 🔒 early locked view
-  if (dailyLocked) {
+  // ── locked view ────────────────────────────────────────────────────────────
+  if (locked) {
     return (
       <main className="p-4 max-w-md mx-auto space-y-4">
         <section className="space-y-3">
           <div className="rounded border p-4 bg-gray-50 text-center">
             <p className="text-base font-medium">
-              {lockMsg ||
-                "You’ve hit the limit for now. Please try again later."}
+              {lockMsg || "You’ve hit the limit for now. Please try again later."}
             </p>
           </div>
         </section>
@@ -270,7 +244,7 @@ export default function ScanVotePage() {
     );
   }
 
-  // normal UI
+  // ── normal UI ──────────────────────────────────────────────────────────────
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-center">QR → QR Vote</h1>
@@ -279,14 +253,14 @@ export default function ScanVotePage() {
       {step === "voter" && (
         <section className="space-y-3">
           <p className="text-sm text-gray-600">
-            Scan <b>your</b> sticker, or type it (e.g., <code>nbk1</code> /{" "}
-            <code>JP001</code>).
+            Scan <b>your</b> sticker, or type it (e.g., <code>NBK1</code> / <code>JP001</code>).
           </p>
 
-          <QrScanner
-            onScan={(t) => t && fetchVoterInfo(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+          <div className="rounded border overflow-hidden">
+            <div className="aspect-[4/3] bg-black/5">
+              <QrScanner onScan={(t) => t && fetchVoterInfo(t)} onError={(e) => setMsg(e.message)} />
+            </div>
+          </div>
 
           <div className="flex gap-2">
             <input
@@ -294,11 +268,10 @@ export default function ScanVotePage() {
               placeholder="Your code"
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
+              inputMode="text"
+              autoCapitalize="characters"
             />
-            <button
-              className="px-4 rounded bg-black text-white"
-              onClick={() => fetchVoterInfo(voterCode)}
-            >
+            <button className="px-4 rounded bg-black text-white" onClick={() => fetchVoterInfo(voterCode)}>
               Next
             </button>
           </div>
@@ -310,56 +283,53 @@ export default function ScanVotePage() {
         <section className="space-y-3">
           <div className="rounded border p-3 bg-gray-50">
             <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to give
-              a virtual token to?
+              Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
             </p>
           </div>
+
           {/* Walsh-only: choose the token type here */}
           {isWalsh ? (
-            <>
-              <div className="mt-3 flex items-center justify-center gap-4">
-                <TypeBadge
-                  type="token"
-                  size="lg"
-                  interactive
-                  selected={voteType === "token"}
+            <div className="rounded border p-3">
+              <div className="text-sm mb-2">Choose token type:</div>
+              <div className="flex gap-2 justify-center">
+                <button
+                  className={`px-3 py-1 rounded border ${voteType === "token" ? "bg-black text-white" : ""}`}
                   onClick={() => setVoteType("token")}
-                />
-                <TypeBadge
-                  type="goodCatch"
-                  size="lg"
-                  interactive
-                  selected={voteType === "goodCatch"}
+                >
+                  Token of Excellence
+                </button>
+                <button
+                  className={`px-3 py-1 rounded border ${voteType === "goodCatch" ? "bg-black text-white" : ""}`}
                   onClick={() => setVoteType("goodCatch")}
-                />
+                >
+                  Good Catch
+                </button>
               </div>
-              <p className="text-xs text-center text-gray-500">
-                Tap a token above, then scan or search your coworker.
-              </p>
-            </>
+            </div>
           ) : (
             <div className="mt-4 flex justify-center">
-              <TypeBadge type="token" size="lg" />
+              <TypeBadge type="token" />
             </div>
           )}
 
           <p className="text-sm text-gray-600">Scan coworker or type code.</p>
-          <QrScanner
-            onScan={(t) => t && fetchTargetInfo(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+
+          <div className="rounded border overflow-hidden">
+            <div className="aspect-[4/3] bg-black/5">
+              <QrScanner onScan={(t) => t && fetchTargetInfo(t)} onError={(e) => setMsg(e.message)} />
+            </div>
+          </div>
 
           <div className="flex gap-2">
             <input
               className="flex-1 border rounded p-2"
-              placeholder="Coworker code (e.g., nbk2 / JP010)"
+              placeholder="Coworker code (e.g., NBK2 / JP010)"
               value={targetCode}
               onChange={(e) => setTargetCode(e.target.value)}
+              inputMode="text"
+              autoCapitalize="characters"
             />
-            <button
-              className="px-4 rounded bg-black text-white"
-              onClick={() => fetchTargetInfo(targetCode)}
-            >
+            <button className="px-4 rounded bg-black text-white" onClick={() => fetchTargetInfo(targetCode)}>
               Next
             </button>
           </div>
@@ -393,14 +363,9 @@ export default function ScanVotePage() {
             ) : results.length ? (
               <ul className="divide-y border rounded">
                 {results.map((w) => (
-                  <li
-                    key={w.code}
-                    className="flex items-center justify-between p-2"
-                  >
+                  <li key={w.code} className="flex items-center justify-between p-2">
                     <div>
-                      <div className="font-medium">
-                        {w.fullName || "(no name yet)"}
-                      </div>
+                      <div className="font-medium">{w.fullName || "(no name yet)"}</div>
                       <div className="text-xs text-gray-600">{w.code}</div>
                     </div>
                     <button
@@ -423,9 +388,7 @@ export default function ScanVotePage() {
             ) : filterCompanyId || query.trim() ? (
               <p className="text-sm text-gray-500">No matches found.</p>
             ) : (
-              <p className="text-xs text-gray-500">
-                Tip: filter by company or search a name/code.
-              </p>
+              <p className="text-xs text-gray-500">Tip: filter by company or search a name/code.</p>
             )}
           </div>
         </section>
@@ -436,22 +399,14 @@ export default function ScanVotePage() {
         <section className="space-y-3">
           <div className="rounded border p-3 bg-gray-50">
             <p className="text-sm">
-              Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
-              ?
+              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
-            >
+            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
               Cancel
             </button>
-            <button
-              className="flex-1 py-2 rounded bg-black text-white"
-              onClick={submitVote}
-            >
+            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
               Confirm
             </button>
           </div>
@@ -466,10 +421,7 @@ export default function ScanVotePage() {
         <section className="space-y-3">
           <p className="text-center">{msg}</p>
           <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
-            >
+            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
               Vote again
             </button>
           </div>

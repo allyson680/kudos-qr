@@ -1,15 +1,15 @@
+// src/app/vote/VotePageClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { useSearchParams, useRouter } from "next/navigation";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
 import {
   getNextOutOfTokensMessage,
   getNextCompanyCapMessage,
 } from "@/lib/outOfTokens";
-import { useRouter } from "next/navigation";
 
 type Worker = { code: string; fullName: string; companyId: string };
 type Company = { id: string; name: string };
@@ -20,14 +20,14 @@ const QrScanner = dynamic(() => import("@/Company/QRScanner"), { ssr: false });
 type Step = "voter" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
-export default function VotePage() {
+export default function VotePageClient() {
   const router = useRouter();
   const qs = useSearchParams();
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (
-    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
-  ) as "token" | "goodCatch";
+  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
+    | "token"
+    | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -35,10 +35,7 @@ export default function VotePage() {
   const [voterCode, setVoterCode] = useState(voterFromQS);
   const [voterName, setVoterName] = useState("");
   const [voterCompanyId, setVoterCompanyId] = useState("");
-  const voterProject = useMemo(
-    () => getProjectFromCode(voterCode),
-    [voterCode]
-  );
+  const voterProject = useMemo(() => getProjectFromCode(voterCode), [voterCode]);
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
 
   // type (Walsh only)
@@ -57,9 +54,7 @@ export default function VotePage() {
 
   const [msg, setMsg] = useState("");
 
-  // lock state (used for daily OR company cap)
-  type LockKind = "daily" | "company";
-
+  // lock state (daily OR company cap)
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
@@ -80,7 +75,7 @@ export default function VotePage() {
     return json?.existing ?? null;
   }
 
-  // Check both limits (daily + company monthly)
+  // Check both limits (daily + company monthly if returned)
   async function checkLimits(voter: string, companyId?: string) {
     try {
       const params = new URLSearchParams({ voter });
@@ -91,13 +86,6 @@ export default function VotePage() {
       const j = await r.json();
       if (j?.ok) {
         if (typeof j.companyRemaining === "number" && j.companyRemaining <= 0) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof j.companyMonthlyRemaining === "number" &&
-          j.companyMonthlyRemaining <= 0
-        ) {
           lockOut("company");
           return;
         }
@@ -126,14 +114,13 @@ export default function VotePage() {
       setVoterName("");
       setVoterCompanyId("");
       setMsg("We didn’t find your code. Redirecting to register…");
-      // small delay so the message is visible, optional
       setTimeout(() => router.push(`/k/${code}`), 300);
       return;
     }
 
     setVoterName(w.fullName ?? "");
     setVoterCompanyId(w.companyId ?? "");
-    await checkLimits(code); // your pre-lock check
+    await checkLimits(code, w.companyId);
     setStep("target");
   }
 
@@ -142,7 +129,6 @@ export default function VotePage() {
     const code = normalizeSticker(raw);
     if (!code) return;
 
-    // Same-project client check (server enforces too)
     if (getProjectFromCode(code) !== voterProject) {
       setMsg("Same-project only (NBK→NBK, JP→JP)");
       return;
@@ -150,9 +136,7 @@ export default function VotePage() {
 
     const w = await apiLookup(code);
     if (!w) {
-      setMsg(
-        "We couldn't find that sticker. Ask your coworker to register first."
-      );
+      setMsg("We couldn't find that sticker. Ask your coworker to register first.");
       return;
     }
 
@@ -189,10 +173,7 @@ export default function VotePage() {
           lockOut("company");
           return;
         }
-        if (
-          typeof json.dailyRemaining === "number" &&
-          json.dailyRemaining <= 0
-        ) {
+        if (typeof json.dailyRemaining === "number" && json.dailyRemaining <= 0) {
           lockOut("daily");
           return;
         }
@@ -220,13 +201,12 @@ export default function VotePage() {
     }
   }
 
-  // If we land with ?voter=... in the URL, check limits (daily can be checked now;
-  // company cap will be rechecked after we look up the voter and know their companyId).
+  // If we land with ?voter=... in the URL, check limits
   useEffect(() => {
     if (voterFromQS) checkLimits(voterFromQS);
   }, [voterFromQS]);
 
-  // Load companies for the filter when we reach the target step
+  // Load companies when entering target step (for filter dropdown)
   useEffect(() => {
     if (step !== "target") return;
     (async () => {
@@ -240,7 +220,7 @@ export default function VotePage() {
     })();
   }, [step]);
 
-  // Search workers when filter/query changes (only on target step)
+  // Search workers on target step
   useEffect(() => {
     if (step !== "target") return;
 
@@ -273,15 +253,14 @@ export default function VotePage() {
     };
   }, [step, filterCompanyId, query, voterProject]);
 
-  // 🔒 Early locked view: show only the rotated message
+  // 🔒 early locked view
   if (dailyLocked) {
     return (
       <main className="p-4 max-w-md mx-auto space-y-4">
         <section className="space-y-3">
           <div className="rounded border p-4 bg-gray-50 text-center">
             <p className="text-base font-medium">
-              {lockMsg ||
-                "You’ve hit the limit for now. Please try again later."}
+              {lockMsg || "You’ve hit the limit for now. Please try again later."}
             </p>
           </div>
         </section>
@@ -297,14 +276,9 @@ export default function VotePage() {
       {/* STEP 1 — voter */}
       {step === "voter" && (
         <section className="space-y-3">
-          <p className="text-sm text-gray-600">
-            Scan your sticker, or type it.
-          </p>
+          <p className="text-sm text-gray-600">Scan your sticker, or type it.</p>
 
-          <QrScanner
-            onScan={(t) => t && setVoter(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+          <QrScanner onScan={(t) => t && setVoter(t)} onError={(e) => setMsg(e.message)} />
 
           <div className="flex gap-2">
             <input
@@ -313,10 +287,7 @@ export default function VotePage() {
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
             />
-            <button
-              className="px-4 rounded bg-black text-white"
-              onClick={() => setVoter(voterCode)}
-            >
+            <button className="px-4 rounded bg-black text-white" onClick={() => setVoter(voterCode)}>
               Next
             </button>
           </div>
@@ -328,45 +299,45 @@ export default function VotePage() {
         <section className="space-y-3">
           <div className="rounded border p-3 bg-gray-50">
             <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to vote
-              for?
+              Hello <b>{voterName || voterCode}</b>, who would you like to vote for?
             </p>
           </div>
-          {/* Walsh-only: choose the token type here */}
-{isWalsh ? (
-  <>
-    <div className="mt-3 flex items-center justify-center gap-4">
-      <TypeBadge
-        type="token"
-        size="lg"
-        interactive
-        selected={voteType === "token"}
-        onClick={() => setVoteType("token")}
-      />
-      <TypeBadge
-        type="goodCatch"
-        size="lg"
-        interactive
-        selected={voteType === "goodCatch"}
-        onClick={() => setVoteType("goodCatch")}
-      />
-    </div>
-    <p className="text-xs text-center text-gray-500">
-      Tap a token above, then scan or search your coworker.
-    </p>
-  </>
-) : (
-  <div className="mt-4 flex justify-center">
-    <TypeBadge type="token" size="lg" />
-  </div>
-)}
 
+          {/* Walsh-only: choose the token type (wrap TypeBadge in clickable buttons; no extra props needed) */}
+          {isWalsh ? (
+            <>
+              <div className="mt-3 flex items-center justify-center gap-4">
+                <button
+                  aria-pressed={voteType === "token"}
+                  onClick={() => setVoteType("token")}
+                  className={`rounded-full p-1 border ${
+                    voteType === "token" ? "ring-2 ring-black" : "opacity-90"
+                  }`}
+                >
+                  <TypeBadge type="token" />
+                </button>
+                <button
+                  aria-pressed={voteType === "goodCatch"}
+                  onClick={() => setVoteType("goodCatch")}
+                  className={`rounded-full p-1 border ${
+                    voteType === "goodCatch" ? "ring-2 ring-black" : "opacity-90"
+                  }`}
+                >
+                  <TypeBadge type="goodCatch" />
+                </button>
+              </div>
+              <p className="text-xs text-center text-gray-500">
+                Tap a token above, then scan or search your coworker.
+              </p>
+            </>
+          ) : (
+            <div className="mt-4 flex justify-center">
+              <TypeBadge type="token" />
+            </div>
+          )}
 
           <p className="text-sm text-gray-600">Scan coworker or type code.</p>
-          <QrScanner
-            onScan={(t) => t && setTarget(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+          <QrScanner onScan={(t) => t && setTarget(t)} onError={(e) => setMsg(e.message)} />
 
           <div className="flex gap-2">
             <input
@@ -375,10 +346,7 @@ export default function VotePage() {
               value={targetCode}
               onChange={(e) => setTargetCode(e.target.value)}
             />
-            <button
-              className="px-4 rounded bg-black text-white"
-              onClick={() => setTarget(targetCode)}
-            >
+            <button className="px-4 rounded bg-black text-white" onClick={() => setTarget(targetCode)}>
               Next
             </button>
           </div>
@@ -412,14 +380,9 @@ export default function VotePage() {
             ) : results.length ? (
               <ul className="divide-y border rounded">
                 {results.map((w) => (
-                  <li
-                    key={w.code}
-                    className="flex items-center justify-between p-2"
-                  >
+                  <li key={w.code} className="flex items-center justify-between p-2">
                     <div>
-                      <div className="font-medium">
-                        {w.fullName || "(no name yet)"}
-                      </div>
+                      <div className="font-medium">{w.fullName || "(no name yet)"}</div>
                       <div className="text-xs text-gray-600">{w.code}</div>
                     </div>
                     <button
@@ -442,9 +405,7 @@ export default function VotePage() {
             ) : filterCompanyId || query.trim() ? (
               <p className="text-sm text-gray-500">No matches found.</p>
             ) : (
-              <p className="text-xs text-gray-500">
-                Tip: filter by company or search a name/code.
-              </p>
+              <p className="text-xs text-gray-500">Tip: filter by company or search a name/code.</p>
             )}
           </div>
         </section>
@@ -455,22 +416,14 @@ export default function VotePage() {
         <section className="space-y-3">
           <div className="rounded border p-3 bg-gray-50">
             <p className="text-sm">
-              Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
-              ?
+              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
-            >
+            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
               Cancel
             </button>
-            <button
-              className="flex-1 py-2 rounded bg-black text-white"
-              onClick={submitVote}
-            >
+            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
               Confirm
             </button>
           </div>
@@ -485,10 +438,7 @@ export default function VotePage() {
         <section className="space-y-3">
           <p className="text-center">{msg}</p>
           <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
-            >
+            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
               Vote again
             </button>
           </div>

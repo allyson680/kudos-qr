@@ -1,6 +1,7 @@
+// src/app/k/[code]/page.tsx
 "use client";
 
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
@@ -120,16 +121,11 @@ function CompanySelect({
 
 /* ---------------------------------- Page ---------------------------------- */
 
-type Props = { params: Promise<{ code: string }> };
-
-export default function CodePage({ params }: Props) {
-  // Next 15: unwrap the promise-y params with React.use()
-  const { code: rawCode } = use(params);
-
+export default function CodePage({ params }: { params: { code: string } }) {
   // Canonical code (NBK1 -> NBK0001)
   const voterCode = useMemo(
-    () => normalizeSticker(decodeURIComponent(rawCode || "")),
-    [rawCode]
+    () => normalizeSticker(decodeURIComponent(params.code || "")),
+    [params.code]
   );
   const project = getProjectFromCode(voterCode);
 
@@ -148,14 +144,14 @@ export default function CodePage({ params }: Props) {
   const [targetName, setTargetName] = useState("");
   const [feedback, setFeedback] = useState("");
 
-  // Toast
-  const [toast, setToast] = useState<string>("");
-
-  // 🔎 search/filter (target step only) — MUST be inside the component
+  // 🔎 search/filter (target step only)
   const [filterCompanyId, setFilterCompanyId] = useState<string>("");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // Toast
+  const [toast, setToast] = useState<string>("");
 
   // Locks
   const [dailyLocked, setDailyLocked] = useState(false);
@@ -224,7 +220,7 @@ export default function CodePage({ params }: Props) {
           setFullName(json.existing.fullName ?? "");
           setCompanyId(json.existing.companyId ?? "");
           await checkLimits(voterCode, json.existing.companyId ?? "");
-          // choose step as you like; we'll continue to "profile" until they hit Continue
+          // stay on "profile" until they tap Continue
         } else {
           setMe(null);
           setFullName("");
@@ -478,6 +474,28 @@ export default function CodePage({ params }: Props) {
               />
             </label>
 
+            {/* Walsh chooses vote type; others default to Token */}
+            {companyId === WALSH_COMPANY_ID && (
+              <div className="flex gap-2 justify-center">
+                <button
+                  className={`px-3 py-1 rounded border ${
+                    voteType === "token" ? "bg-black text-white" : ""
+                  }`}
+                  onClick={() => setVoteType("token")}
+                >
+                  Token of Excellence
+                </button>
+                <button
+                  className={`px-3 py-1 rounded border ${
+                    voteType === "goodCatch" ? "bg-black text-white" : ""
+                  }`}
+                  onClick={() => setVoteType("goodCatch")}
+                >
+                  Good Catch
+                </button>
+              </div>
+            )}
+
             <button
               onClick={saveProfile}
               className="w-full py-3 rounded bg-black text-white disabled:opacity-50"
@@ -496,40 +514,19 @@ export default function CodePage({ params }: Props) {
                 Hello <b>{fullName || voterCode}</b>, who would you like to give
                 a virtual token to?
               </p>
-              {/* Walsh-only: choose the token type here */}
-              {isWalsh ? (
-                <>
-                  <div className="mt-3 flex items-center justify-center gap-6">
-                    <TypeBadge
-                      type="token"
-                      size="lg"
-                      interactive
-                      selected={voteType === "token"}
-                      onClick={() => setVoteType("token")}
-                    />
-                    <TypeBadge
-                      type="goodCatch"
-                      size="lg"
-                      interactive
-                      selected={voteType === "goodCatch"}
-                      onClick={() => setVoteType("goodCatch")}
-                    />
-                  </div>
-                  <p className="text-xs text-center p-2 text-gray-500">
-                    Tap a token above, then scan or search your coworker.
-                  </p>
-                </>
-              ) : (
-                <div className="mt-4 flex justify-center">
-                  <TypeBadge type="token" size="lg" />
-                </div>
-              )}
+              <div className="mt-3 flex justify-center">
+                <TypeBadge type={voteType} />
+              </div>
             </div>
 
-            <QrScanner
-              onScan={(text: string | null) => text && fetchTargetInfo(text)}
-              onError={(err: Error) => setFeedback(err.message)}
-            />
+            <div className="rounded border overflow-hidden">
+              <div className="aspect-[4/3] bg-black/5">
+                <QrScanner
+                  onScan={(text: string | null) => text && fetchTargetInfo(text)}
+                  onError={(err: Error) => setFeedback(err.message)}
+                />
+              </div>
+            </div>
 
             <div className="flex gap-2">
               <input
@@ -620,7 +617,7 @@ export default function CodePage({ params }: Props) {
           <>
             <div className="rounded border p-3 bg-gray-50">
               <p className="text-sm">
-                Confirm token is for{" "}
+                Confirm vote for{" "}
                 <b>
                   {targetName ? `${targetName} (${targetCode})` : targetCode}
                 </b>

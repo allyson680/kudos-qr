@@ -11,7 +11,6 @@ export const metadata: Metadata = {
   description: "Scan a sticker and give virtual tokens.",
   // make sure this matches your file name in /public
   manifest: "/manifest.json",
-  themeColor: "#111111",
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
@@ -30,7 +29,6 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#111111",
   viewportFit: "cover",
 };
 

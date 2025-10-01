@@ -1,36 +1,16 @@
-// SERVER-ONLY helper. Don't import this in client components.
-import * as admin from "firebase-admin";
-import fs from "fs";
-import path from "path";
+import admin from "firebase-admin";
 
-const globalForAdmin = global as unknown as { adminApp?: admin.app.App };
-
-export function getAdminApp() {
-  if (globalForAdmin.adminApp) return globalForAdmin.adminApp;
-
-  let credential: admin.credential.Credential;
-
-  // Preferred: read full JSON from Vercel env var
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (raw && raw.trim().startsWith("{")) {
-    credential = admin.credential.cert(JSON.parse(raw) as admin.ServiceAccount);
-  } else {
-    // Local dev fallback: read file if present
-    const localPath = path.join(process.cwd(), "serviceAccountKey.json");
-    if (!fs.existsSync(localPath)) {
-      throw new Error(
-        "Missing Firebase credentials. Set FIREBASE_SERVICE_ACCOUNT_JSON (Vercel) or place serviceAccountKey.json in project root (local)."
-      );
-    }
-    const localJson = JSON.parse(fs.readFileSync(localPath, "utf-8"));
-    credential = admin.credential.cert(localJson);
-  }
-
-  globalForAdmin.adminApp = admin.initializeApp({ credential });
-  return globalForAdmin.adminApp!;
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID!,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL!,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n")!,
+    }),
+    // storageBucket: process.env.FIREBASE_STORAGE_BUCKET, // if needed
+    // databaseURL: process.env.FIREBASE_DATABASE_URL,     // if needed
+  });
 }
 
-export function getDb() {
-  return getAdminApp().firestore();
-}
-
+export const getDb = () => admin.firestore();
+export { admin };
