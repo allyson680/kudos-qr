@@ -1,28 +1,38 @@
+// src/app/api/admin/summary/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
+import { getProjectFromCode } from "@/lib/codeUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Time zone (configurable). In Vercel set env var VOTE_TZ if you want local time.
+const TZ = process.env.VOTE_TZ || "UTC";
 
-const TZ = "America/Los_Angeles";
-
+// Format helpers (all keyed in TZ, stable for day/month grouping)
 function fmt(now = new Date(), opts: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, ...opts }).format(now);
 }
 function dayKey(now = new Date()) {
-  return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}-${fmt(now, { day: "2-digit" })}`;
+  return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}-${fmt(
+    now,
+    { day: "2-digit" }
+  )}`;
 }
 function monthKey(now = new Date()) {
   return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}`;
 }
+
+/**
+ * Voting open policy: open the entire month (1st 00:00 TZ → last day 23:59:59 TZ).
+ * No blackout dates inside the month.
+ */
 function isVotingOpen(now = new Date()) {
-  // Open until the last Wednesday of the month at 00:00 local TZ
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const back = (last.getDay() - 3 + 7) % 7; // 3 = Wed
-  last.setDate(last.getDate() - back);
-  last.setHours(0, 0, 0, 0);
-  return now < last;
+  const y = Number(fmt(now, { year: "numeric" }));
+  const m = Number(fmt(now, { month: "2-digit" })) - 1; // 0-based
+  const d = Number(fmt(now, { day: "2-digit" }));
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return d >= 1 && d <= lastDay;
 }
 
 // Safely turn Firestore Timestamp/Date/string into ISO string
@@ -43,6 +53,7 @@ export async function GET(_req: NextRequest) {
     const dk = dayKey(now);
     const mk = monthKey(now);
 
+    // Pull today’s votes, all workers/companies, and this month’s votes in parallel
     const [votesSnap, workersSnap, companiesSnap, monthSnap] = await Promise.all([
       db.collection("votes").where("dayKey", "==", dk).get(),
       db.collection("workers").get(),
@@ -50,37 +61,39 @@ export async function GET(_req: NextRequest) {
       db.collection("votes").where("monthKey", "==", mk).get(),
     ]);
 
-    // Maps
+    // Index workers for fast joins
     const workers: Record<string, any> = {};
     workersSnap.forEach((d) => {
       workers[d.id] = d.data();
     });
 
+    // Index companies (id -> name)
     const companies: Record<string, string> = {};
     companiesSnap.forEach((d) => {
       companies[d.id] = (d.data() as any).name || d.id;
     });
-    const companyName = (id: string) => (id ? companies[id] || id : "—");
+    const companyName = (id?: string) => (id ? companies[id] || id : "—");
 
     // Today’s rows
     const todayRows = votesSnap.docs.map((d) => {
       const v = d.data() as any;
       const voter = workers[v.voterCode] || {};
       const target = workers[v.targetCode] || {};
+      const project = v.project || getProjectFromCode(v.voterCode || target.code || "");
 
       return {
-        time: toIso(v.createdAt),               // <-- ISO for the UI
-        project: v.project,
+        time: toIso(v.createdAt),
+        project,
         voterCode: v.voterCode,
         voterName: voter.fullName || "",
-        voterCompany: companyName(voter.companyId || v.companyId || ""),
+        voterCompany: companyName(v.voterCompanyId || voter.companyId || v.companyId),
         targetCode: v.targetCode,
         targetName: target.fullName || "",
-        targetCompany: companyName(target.companyId || ""),
+        targetCompany: companyName(v.targetCompanyId || target.companyId),
       };
     });
 
-    // Month totals (by project + company)
+    // This month’s totals by (project, voterCompany)
     const totals: Record<
       string,
       { project: string; companyId: string; companyName: string; count: number }
@@ -88,13 +101,14 @@ export async function GET(_req: NextRequest) {
 
     monthSnap.forEach((doc) => {
       const v = doc.data() as any;
-      // Prefer companyId saved on the vote; fall back to voter's company from workers map
       const voter = workers[v.voterCode] || {};
-      const cid: string = v.companyId || voter.companyId || "";
-      const key = `${v.project}__${cid}`;
+      const project = v.project || getProjectFromCode(v.voterCode || "");
+      // Prefer voterCompanyId saved on the vote; fall back to voter.companyId
+      const cid: string = v.voterCompanyId || v.companyId || voter.companyId || "";
+      const key = `${project}__${cid}`;
       if (!totals[key]) {
         totals[key] = {
-          project: v.project,
+          project,
           companyId: cid,
           companyName: companyName(cid),
           count: 0,

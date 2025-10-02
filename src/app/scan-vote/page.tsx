@@ -384,7 +384,7 @@ export default function ScanVotePage() {
       {/* STEP 3 — confirm */}
       {step === "confirm" && (
         <section className="space-y-3">
-          <div className="rounded border p-3 bg-gray-50">
+          <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
             <p className="text-sm">
               Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>

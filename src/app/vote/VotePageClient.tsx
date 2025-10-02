@@ -1,15 +1,27 @@
-// src/app/vote/VotePageClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { useSearchParams, useRouter } from "next/navigation";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
 import {
   getNextOutOfTokensMessage,
   getNextCompanyCapMessage,
 } from "@/lib/outOfTokens";
+
+function extractCode(input: string): string | null {
+  try {
+    const u = new URL(input);
+    const kMatch = u.pathname.match(/\/k\/([A-Za-z]+-?\d+)/i);
+    if (kMatch) return kMatch[1];
+    const qMatch = (u.search + u.hash).match(/(NBK|JP)-?\d+/i);
+    if (qMatch) return qMatch[0];
+  } catch {}
+  // Plain text: “NBK1”, “JP-012”, etc.
+  const m = input.match(/(NBK|JP)-?\d+/i);
+  return m ? m[0] : null;
+}
 
 type Worker = { code: string; fullName: string; companyId: string };
 type Company = { id: string; name: string };
@@ -51,13 +63,13 @@ export default function VotePageClient() {
   // search/filter
   const [companies, setCompanies] = useState<Company[]>([]);
   const [filterCompanyId, setFilterCompanyId] = useState<string>("");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(""); // single box: name or code
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
   const [msg, setMsg] = useState("");
 
-  // lock state (daily OR company cap)
+  // lock state (used for daily OR company cap)
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
@@ -78,7 +90,7 @@ export default function VotePageClient() {
     return json?.existing ?? null;
   }
 
-  // Check both limits (daily + company monthly if returned)
+  // Check both limits (daily + company monthly)
   async function checkLimits(voter: string, companyId?: string) {
     try {
       const params = new URLSearchParams({ voter });
@@ -89,6 +101,13 @@ export default function VotePageClient() {
       const j = await r.json();
       if (j?.ok) {
         if (typeof j.companyRemaining === "number" && j.companyRemaining <= 0) {
+          lockOut("company");
+          return;
+        }
+        if (
+          typeof j.companyMonthlyRemaining === "number" &&
+          j.companyMonthlyRemaining <= 0
+        ) {
           lockOut("company");
           return;
         }
@@ -123,7 +142,7 @@ export default function VotePageClient() {
 
     setVoterName(w.fullName ?? "");
     setVoterCompanyId(w.companyId ?? "");
-    await checkLimits(code, w.companyId);
+    await checkLimits(code); // pre-lock check
     setStep("target");
   }
 
@@ -132,6 +151,7 @@ export default function VotePageClient() {
     const code = normalizeSticker(raw);
     if (!code) return;
 
+    // Same-project client check (server enforces too)
     if (getProjectFromCode(code) !== voterProject) {
       setMsg("Same-project only (NBK→NBK, JP→JP)");
       return;
@@ -209,12 +229,12 @@ export default function VotePageClient() {
     }
   }
 
-  // If we land with ?voter=... in the URL, check limits
+  // If we land with ?voter=... in the URL, check limits (daily now; company after lookup)
   useEffect(() => {
     if (voterFromQS) checkLimits(voterFromQS);
   }, [voterFromQS]);
 
-  // Load companies when entering target step (for filter dropdown)
+  // Load companies for the filter when we reach the target step
   useEffect(() => {
     if (step !== "target") return;
     (async () => {
@@ -223,15 +243,16 @@ export default function VotePageClient() {
         const json = await res.json();
         setCompanies(Array.isArray(json.companies) ? json.companies : []);
       } catch {
-        // ignore
+        /* ignore */
       }
     })();
   }, [step]);
 
-  // Search workers on target step
+  // Search workers when filter/query changes (only on target step)
   useEffect(() => {
     if (step !== "target") return;
 
+    // no network until a filter or text appears
     if (!filterCompanyId && !query.trim()) {
       setResults([]);
       return;
@@ -261,7 +282,7 @@ export default function VotePageClient() {
     };
   }, [step, filterCompanyId, query, voterProject]);
 
-  // 🔒 early locked view
+  // 🔒 Early locked view: show only the rotated message
   if (dailyLocked) {
     return (
       <main className="p-4 max-w-md mx-auto space-y-4">
@@ -285,177 +306,216 @@ export default function VotePageClient() {
       {/* STEP 1 — voter */}
       {step === "voter" && (
         <section className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-700">
             Scan your sticker, or type it.
           </p>
 
           <QrScanner
-            onScan={(t) => t && setVoter(t)}
+            onScan={(t) => {
+              if (!t) return;
+              if (/^https?:\/\//i.test(t)) {
+                // If your QR encodes a full link, jump there immediately
+                window.location.assign(t);
+                return;
+              }
+              const maybe = extractCode(t);
+              if (maybe) setVoter(maybe); // auto-advance to target step
+            }}
             onError={(e) => setMsg(e.message)}
           />
 
-          <div className="flex gap-2">
+          {/* Form: lets phone “Go” submit */}
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const maybe = extractCode(voterCode) || voterCode;
+              setVoter(maybe);
+            }}
+            noValidate
+          >
             <input
               className="flex-1 border rounded p-2"
-              placeholder="Your code (e.g., nbk1 / JP001)"
+              placeholder="Your code (e.g., NBK1 / JP001)"
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
+              enterKeyHint="go"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
             />
-            <button
-              className="px-4 rounded bg-black text-white"
-              onClick={() => setVoter(voterCode)}
-            >
+            <button type="submit" className="px-4 rounded bg-black text-white">
               Next
             </button>
-          </div>
+          </form>
         </section>
       )}
 
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
-            <p className="text-sm leading-relaxed">
-              Hello{" "}
-              <span className="font-semibold">{voterName || voterCode}</span>,
-              who would you like to give a virtual token to?
+          <div className="rounded border p-3 bg-emerald-50 border-emerald-200">
+            <p className="text-sm text-emerald-900">
+              Hello <b>{voterName || voterCode}</b>, who would you like to vote
+              for?
             </p>
           </div>
 
-          {/* Walsh-only: choose the token type (wrap TypeBadge in clickable buttons; no extra props needed) */}
+          {/* Walsh-only: choose the token type (out of the card, so it doesn’t duplicate) */}
           {isWalsh ? (
             <>
-              <div className="mt-3 flex items-center justify-center gap-4">
-                <button
-                  aria-pressed={voteType === "token"}
+              <div className="mt-1 flex items-center justify-center gap-4">
+                <TypeBadge
+                  type="token"
+                  size="lg"
+                  interactive
+                  selected={voteType === "token"}
                   onClick={() => setVoteType("token")}
-                  className={`rounded-full p-1 border ${
-                    voteType === "token" ? "ring-2 ring-black" : "opacity-90"
-                  }`}
-                >
-                  <TypeBadge type="token" />
-                </button>
-                <button
-                  aria-pressed={voteType === "goodCatch"}
+                />
+                <TypeBadge
+                  type="goodCatch"
+                  size="lg"
+                  interactive
+                  selected={voteType === "goodCatch"}
                   onClick={() => setVoteType("goodCatch")}
-                  className={`rounded-full p-1 border ${
-                    voteType === "goodCatch"
-                      ? "ring-2 ring-black"
-                      : "opacity-90"
-                  }`}
-                >
-                  <TypeBadge type="goodCatch" />
-                </button>
+                />
               </div>
               <p className="text-xs text-center text-gray-500">
-                Tap a token above, then scan your coworker or use search box below.
+                Tap a token above, then scan or search your coworker.
               </p>
             </>
-          ) : (
-            <div className="mt-4 flex justify-center">
-              <TypeBadge type="token" />
+          ) : null}
+
+          <p className="text-sm text-gray-700">
+            Scan coworker or search by name/code.
+          </p>
+          {/* target step scanner */}
+<QrScanner
+  key={`target-${voterCode}-${step}`}  // force fresh instance when entering target step
+  onScan={(t) => t && setTarget(t)}
+  onError={(e) => setMsg(e.message)}
+/>
+
+          {/* Single input: name OR code. Form submit = Go */}
+          <div className="rounded border p-3 space-y-2">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const maybe = extractCode(query);
+                if (maybe) setTarget(maybe);
+              }}
+              className="space-y-2"
+              noValidate
+            >
+              <label className="text-sm text-gray-600">
+                Search by name or code
+              </label>
+              <input
+                className="w-full border rounded p-2"
+                placeholder="e.g., Maria or NBK12 / JP010"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                enterKeyHint="go"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+            </form>
+
+            {/* Company filter under the search box (full width) */}
+            <div className="pt-1">
+              <label className="text-sm text-gray-600">Filter by company</label>
+              <select
+                className="mt-1 w-full border rounded p-2"
+                value={filterCompanyId}
+                onChange={(e) => setFilterCompanyId(e.target.value)}
+                title="Filter by company"
+              >
+                <option value="">All companies</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
-         
-          <QrScanner
-            onScan={(t) => t && setTarget(t)}
-            onError={(e) => setMsg(e.message)}
-          />
 
-          {/* 🔎 Search & Filter — single column, full width */}
-<div className="rounded border p-3 space-y-2">
-  <label className="text-sm text-gray-600">Search by name or code</label>
-  <input
-    className="w-full border rounded p-2"
-    placeholder="e.g., Chris, nbk2/JP01"
-    value={query}
-    onChange={(e) => setQuery(e.target.value)}
-    onKeyDown={(e) => {
-      if (e.key === "Enter") {
-        // If they typed an exact sticker code, jump straight to confirm
-        const maybeCode = normalizeSticker(query);
-        if (maybeCode) setTarget(query);
-      }
-    }}
-  />
-
-  <label className="text-sm text-gray-600">Filter by company</label>
-  <select
-    className="w-full border rounded p-2"
-    value={filterCompanyId}
-    onChange={(e) => setFilterCompanyId(e.target.value)}
-    title="Filter by company"
-  >
-    <option value="">All companies</option>
-    {companies.map((c) => (
-      <option key={c.id} value={c.id}>
-        {c.name}
-      </option>
-    ))}
-  </select>
-
-  {isSearching ? (
-    <p className="text-sm text-gray-500">Searching…</p>
-  ) : results.length ? (
-    <ul className="divide-y border rounded">
-      {results.map((w) => (
-        <li key={w.code} className="flex items-center justify-between p-2">
-          <div>
-            <div className="font-medium">{w.fullName || "(no name yet)"}</div>
-            <div className="text-xs text-gray-600">{w.code}</div>
+            {isSearching ? (
+              <p className="text-sm text-gray-500">Searching…</p>
+            ) : results.length ? (
+              <ul className="divide-y border rounded">
+                {results.map((w) => (
+                  <li
+                    key={w.code}
+                    className="flex items-center justify-between p-2"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {w.fullName || "(no name yet)"}
+                      </div>
+                      <div className="text-xs text-gray-600">{w.code}</div>
+                    </div>
+                    <button
+                      className="px-3 py-1 rounded bg-black text-white"
+                      onClick={() => {
+                        if (getProjectFromCode(w.code) !== voterProject) {
+                          setMsg("Same-project only (NBK→NBK, JP→JP)");
+                          return;
+                        }
+                        setTargetCode(w.code);
+                        setTargetName(w.fullName || "");
+                        setStep("confirm");
+                      }}
+                    >
+                      Select
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : filterCompanyId || query.trim() ? (
+              <p className="text-sm text-gray-500">No matches found.</p>
+            ) : (
+              <p className="text-xs text-gray-500">
+                Tip: filter by company or search a name/code.
+              </p>
+            )}
           </div>
-          <button
-            className="px-3 py-1 rounded bg-black text-white"
-            onClick={() => {
-              if (getProjectFromCode(w.code) !== voterProject) {
-                setMsg("Same-project only (NBK→NBK, JP→JP)");
-                return;
-              }
-              setTarget(w.code);
-            }}
-          >
-            Select
-          </button>
-        </li>
-      ))}
-    </ul>
-  ) : filterCompanyId || query.trim() ? (
-    <p className="text-sm text-gray-500">No matches found.</p>
-  ) : (null    
-  )}
-</div>
         </section>
       )}
 
       {/* STEP 3 — confirm */}
-      {step === "confirm" && (
-        <section className="space-y-3">
-          <div className="rounded border p-3 bg-gray-50">
-            <p className="text-sm">
-              Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
-              ?
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
-            >
-              Cancel
-            </button>
-            <button
-              className="flex-1 py-2 rounded bg-black text-white"
-              onClick={submitVote}
-            >
-              Confirm
-            </button>
-          </div>
-          <div className="mt-2">
-            <TypeBadge type={voteType} />
-          </div>
-        </section>
-      )}
+{/* STEP 3 — confirm */}
+{step === "confirm" && (
+  <section className="space-y-3">
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
+      <p className="text-sm">
+        Confirm token is for{" "}
+        <b className="font-semibold">
+          {targetName ? `${targetName} (${targetCode})` : targetCode}
+        </b>
+        ?
+      </p>
+      <div className="mt-3 flex justify-center">
+        <TypeBadge type={voteType} />
+      </div>
+    </div>
+
+    <div className="flex gap-2">
+      <button
+        className="flex-1 py-2 rounded border border-neutral-300"
+        onClick={() => setStep("target")}
+      >
+        Cancel
+      </button>
+      <button
+        className="flex-1 py-2 rounded bg-black text-white"
+        onClick={submitVote}
+      >
+        Confirm
+      </button>
+    </div>
+  </section>
+)}
 
       {/* STEP 4 — done */}
       {step === "done" && (
