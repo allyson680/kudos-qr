@@ -1,7 +1,7 @@
 "use client";
-import QRScanner from "@/components/QRScanner";
+
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
@@ -9,19 +9,6 @@ import {
   getNextOutOfTokensMessage,
   getNextCompanyCapMessage,
 } from "@/lib/outOfTokens";
-
-function extractCode(input: string): string | null {
-  try {
-    const u = new URL(input);
-    const kMatch = u.pathname.match(/\/k\/([A-Za-z]+-?\d+)/i);
-    if (kMatch) return kMatch[1];
-    const qMatch = (u.search + u.hash).match(/(NBK|JP)-?\d+/i);
-    if (qMatch) return qMatch[0];
-  } catch {}
-  // Plain text: “NBK1”, “JP-012”, etc.
-  const m = input.match(/(NBK|JP)-?\d+/i);
-  return m ? m[0] : null;
-}
 
 type Worker = { code: string; fullName: string; companyId: string };
 type Company = { id: string; name: string };
@@ -33,7 +20,6 @@ type Step = "voter" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
 export default function VotePageClient() {
-  const router = useRouter();
   const qs = useSearchParams();
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
@@ -48,7 +34,7 @@ export default function VotePageClient() {
   const [voterName, setVoterName] = useState("");
   const [voterCompanyId, setVoterCompanyId] = useState("");
   const voterProject = useMemo(
-    () => getProjectFromCode(voterCode),
+    () => (voterCode ? getProjectFromCode(voterCode) : "NBK"),
     [voterCode]
   );
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
@@ -63,9 +49,12 @@ export default function VotePageClient() {
   // search/filter
   const [companies, setCompanies] = useState<Company[]>([]);
   const [filterCompanyId, setFilterCompanyId] = useState<string>("");
-  const [query, setQuery] = useState(""); // single box: name or code
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // scanner overlay control
+  const [scanOpen, setScanOpen] = useState(false);
 
   const [msg, setMsg] = useState("");
 
@@ -135,15 +124,15 @@ export default function VotePageClient() {
     if (!w) {
       setVoterName("");
       setVoterCompanyId("");
-      setMsg("We didn’t find your code. Redirecting to register…");
-      setTimeout(() => router.push(`/k/${code}`), 300);
+      setMsg("We didn’t find your code. Please register first.");
       return;
     }
 
     setVoterName(w.fullName ?? "");
     setVoterCompanyId(w.companyId ?? "");
-    await checkLimits(code); // pre-lock check
+    await checkLimits(code);
     setStep("target");
+    setScanOpen(true); // auto-open scanner on target step
   }
 
   async function setTarget(raw: string) {
@@ -167,6 +156,7 @@ export default function VotePageClient() {
 
     setTargetCode(code);
     setTargetName(w.fullName ?? "");
+    setScanOpen(false); // ensure scanner overlay is closed
     setStep("confirm");
   }
 
@@ -210,6 +200,7 @@ export default function VotePageClient() {
         const name = (json.target?.fullName || targetName || "").trim();
         setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
         setStep("done");
+        setScanOpen(false);
       } else {
         const err = (json.error || "").toLowerCase();
         if (err.includes("company")) {
@@ -222,14 +213,21 @@ export default function VotePageClient() {
         }
         setMsg(json.error || "Error");
         setStep("target");
+        setScanOpen(true);
       }
     } catch (e: any) {
       setMsg(e?.message || "Network error");
       setStep("target");
+      setScanOpen(true);
     }
   }
 
-  // If we land with ?voter=... in the URL, check limits (daily now; company after lookup)
+  // When step changes, only allow overlay scanning on voter/target
+  useEffect(() => {
+    if (step === "confirm" || step === "done") setScanOpen(false);
+  }, [step]);
+
+  // If we land with ?voter=... in the URL, check limits early
   useEffect(() => {
     if (voterFromQS) checkLimits(voterFromQS);
   }, [voterFromQS]);
@@ -243,24 +241,15 @@ export default function VotePageClient() {
         const json = await res.json();
         setCompanies(Array.isArray(json.companies) ? json.companies : []);
       } catch {
-        /* ignore */
+        // ignore
       }
     })();
   }, [step]);
 
   // Search workers when filter/query changes (only on target step)
-  function resetTargetSearch() {
-    setFilterCompanyId(""); // back to “All companies”
-    setQuery(""); // clear search text
-    setResults([]); // clear old results
-    setTargetCode(""); // clear manual code input
-    setTargetName("");
-  }
-
   useEffect(() => {
     if (step !== "target") return;
 
-    // no network until a filter or text appears
     if (!filterCompanyId && !query.trim()) {
       setResults([]);
       return;
@@ -290,23 +279,20 @@ export default function VotePageClient() {
     };
   }, [step, filterCompanyId, query, voterProject]);
 
-  // 🔒 Early locked view: show only the rotated message
+  // 🔒 Early locked view
   if (dailyLocked) {
     return (
       <main className="p-4 max-w-md mx-auto space-y-4">
-        <section className="space-y-3">
-          <div className="rounded border p-4 bg-gray-50 text-center">
-            <p className="text-base font-medium">
-              {lockMsg ||
-                "You’ve hit the limit for now. Please try again later."}
-            </p>
-          </div>
+        <section className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white text-center">
+          <p className="text-base font-medium">
+            {lockMsg ||
+              "You’ve hit the limit for now. Please try again later."}
+          </p>
         </section>
       </main>
     );
   }
 
-  // ✅ Normal UI
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-center">Vote</h1>
@@ -314,37 +300,37 @@ export default function VotePageClient() {
       {/* STEP 1 — voter */}
       {step === "voter" && (
         <section className="space-y-3">
-          <p className="text-sm text-gray-700">
-            Scan your sticker, or type it.
-          </p>
+          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
+            <p className="text-sm">Scan your sticker, or type it.</p>
+          </div>
 
-          <QRScanner
-            autoStart
-            onScan={(t) => t && setVoter(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+          {/* Scanner block (auto-open here) */}
+          <div className="rounded border overflow-hidden">
+            <div className="aspect-[4/3]">
+              <QrScanner
+                onScan={(t) => t && setVoter(t)}
+                onError={(e) => setMsg(e.message)}
+              />
+            </div>
+          </div>
 
-          {/* Form: lets phone “Go” submit */}
           <form
-            className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              const maybe = extractCode(voterCode) || voterCode;
-              setVoter(maybe);
+              setVoter(voterCode);
             }}
-            noValidate
+            className="flex gap-2"
           >
             <input
               className="flex-1 border rounded p-2"
-              placeholder="Your code (e.g., NBK1 / JP001)"
+              placeholder="Your code (e.g., nbk1 / JP001)"
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
-              enterKeyHint="go"
+              inputMode="text"
               autoCapitalize="characters"
               autoCorrect="off"
-              spellCheck={false}
             />
-            <button type="submit" className="px-4 rounded bg-black text-white">
+            <button className="px-4 rounded bg-black text-white" type="submit">
               Next
             </button>
           </form>
@@ -354,82 +340,97 @@ export default function VotePageClient() {
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          {/* header card — dark like confirm */}
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
+          {/* Hello card */}
+          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
             <p className="text-sm">
-              Hello <b className="font-semibold">{voterName || voterCode}</b>,
-              who would you like to give a virtual token to?
+              Hello <b>{voterName || voterCode}</b>, who would you like to vote
+              for?
             </p>
+
+            {/* Walsh-only: choose the token type here */}
+            {isWalsh ? (
+              <>
+                <div className="mt-3 flex items-center justify-center gap-4">
+                  <TypeBadge
+                    type="token"
+                    size="lg"
+                    interactive
+                    selected={voteType === "token"}
+                    onClick={() => setVoteType("token")}
+                  />
+                  <TypeBadge
+                    type="goodCatch"
+                    size="lg"
+                    interactive
+                    selected={voteType === "goodCatch"}
+                    onClick={() => setVoteType("goodCatch")}
+                  />
+                </div>
+                <p className="text-xs text-center text-gray-300 mt-2">
+                  Tap a token above, then scan or search your coworker.
+                </p>
+              </>
+            ) : (
+              <div className="mt-3 flex justify-center">
+                <TypeBadge type="token" size="lg" />
+              </div>
+            )}
           </div>
 
-          {/* Walsh-only: choose the token type (out of the card, so it doesn’t duplicate) */}
-          {isWalsh ? (
-            <>
-              <div className="mt-1 flex items-center justify-center gap-4">
-                <TypeBadge
-                  type="token"
-                  size="lg"
-                  interactive
-                  selected={voteType === "token"}
-                  onClick={() => setVoteType("token")}
+          {/* Tap-to-scan / auto-scan panel */}
+          <div className="rounded border overflow-hidden">
+            <div className="aspect-[4/3] relative">
+              {!scanOpen && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 text-white text-sm"
+                  onClick={() => setScanOpen(true)}
+                >
+                  Tap to scan
+                </button>
+              )}
+              {scanOpen && (
+                <QrScanner
+                  onScan={(t) => t && setTarget(t)}
+                  onError={(e) => setMsg(e.message)}
                 />
-                <TypeBadge
-                  type="goodCatch"
-                  size="lg"
-                  interactive
-                  selected={voteType === "goodCatch"}
-                  onClick={() => setVoteType("goodCatch")}
-                />
-              </div>
-                
-          {!isWalsh && (
-            <p className="text-sm text-gray-500">
-              Scan coworker or search by name/code.
-            </p>
-          )}
-            </>
-          ) : null}
+              )}
+            </div>
+          </div>
 
-       
+          {/* Manual code entry */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setTarget(targetCode);
+            }}
+            className="flex gap-2"
+          >
+            <input
+              className="flex-1 border rounded p-2"
+              placeholder="Coworker code (e.g., nbk2 / JP010)"
+              value={targetCode}
+              onChange={(e) => setTargetCode(e.target.value)}
+              inputMode="text"
+              autoCapitalize="characters"
+              autoCorrect="off"
+            />
+            <button className="px-4 rounded bg-black text-white" type="submit">
+              Next
+            </button>
+          </form>
 
-          {/* target step scanner */}
-          <QRScanner
-            autoStart
-            onScan={(t) => t && setVoter(t)}
-            onError={(e) => setMsg(e.message)}
-          />
-
-          {/* Single input: name OR code. Form submit = Go */}
+          {/* Search & Filter */}
           <div className="rounded border p-3 space-y-2">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const maybe = extractCode(query);
-                if (maybe) setTarget(maybe);
-              }}
-              className="space-y-2"
-              noValidate
-            >
-              <label className="text-sm text-gray-600">
-                Search by name or code
-              </label>
+            <div className="space-y-2">
               <input
                 className="w-full border rounded p-2"
-                placeholder="e.g., Maria or NBK12 / JP010"
+                placeholder="Search by name or code (e.g., Maria, NBK12)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                enterKeyHint="go"
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
               />
-            </form>
-
-            {/* Company filter under the search box (full width) */}
-            <div className="pt-1">
-              <label className="text-sm text-gray-600">Filter by company</label>
               <select
-                className="mt-1 w-full border rounded p-2"
+                className="w-full border rounded p-2 bg-neutral-900 text-white"
                 value={filterCompanyId}
                 onChange={(e) => setFilterCompanyId(e.target.value)}
                 title="Filter by company"
@@ -467,6 +468,7 @@ export default function VotePageClient() {
                         }
                         setTargetCode(w.code);
                         setTargetName(w.fullName || "");
+                        setScanOpen(false);
                         setStep("confirm");
                       }}
                     >
@@ -483,54 +485,63 @@ export default function VotePageClient() {
               </p>
             )}
           </div>
+
+          {msg && <p className="text-sm text-center">{msg}</p>}
         </section>
       )}
 
-     {/* STEP 3 — confirm */}
-{step === "confirm" && (
-  <section className="space-y-3">
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
-      <p className="text-sm">
-        Confirm token is for{" "}
-        <b className="font-semibold">
-          {targetName ? `${targetName} (${targetCode})` : targetCode}
-        </b>
-        ?
-      </p>
-      <div className="mt-3 flex justify-center">
-        <TypeBadge type={voteType} />
-      </div>
-    </div>
-
-    <div className="flex gap-2">
-      <button
-        className="flex-1 py-2 rounded border border-neutral-300"
-        onClick={() => setStep("target")}
-      >
-        Cancel
-      </button>
-      <button
-        className="flex-1 py-2 rounded bg-black text-white"
-        onClick={submitVote}
-      >
-        Confirm
-      </button>
-    </div>
-  </section>
-)}
-
-
-      {/* STEP 4 — done */}
-      {step === "done" && (
+      {/* STEP 3 — confirm */}
+      {step === "confirm" && (
         <section className="space-y-3">
-          <p className="text-center">{msg}</p>
+          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
+            <p className="text-sm text-center">
+              Confirm token is for{" "}
+              <b>
+                {targetName ? `${targetName} (${targetCode})` : targetCode}
+              </b>
+              ?
+            </p>
+            <div className="mt-3 flex justify-center">
+              <TypeBadge type={voteType} />
+            </div>
+          </div>
           <div className="flex gap-2">
             <button
               className="flex-1 py-2 rounded border"
               onClick={() => {
-                resetTargetSearch();
-                setMsg("");
                 setStep("target");
+                setScanOpen(true);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              className="flex-1 py-2 rounded bg-black text-white"
+              onClick={submitVote}
+            >
+              Confirm
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* STEP 4 — done */}
+      {step === "done" && (
+        <section className="space-y-3">
+          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white text-center">
+            <p>{msg}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => {
+                // reset for a fresh vote
+                setTargetCode("");
+                setTargetName("");
+                setQuery("");
+                setFilterCompanyId(""); // reset filter to "All companies"
+                setStep("target");
+                setScanOpen(true);
               }}
             >
               Vote again
@@ -538,8 +549,6 @@ export default function VotePageClient() {
           </div>
         </section>
       )}
-
-      {msg && step !== "done" && <p className="text-sm text-center">{msg}</p>}
     </main>
   );
 }
