@@ -387,10 +387,7 @@ export default function VotePageClient() {
             </>
           ) : null}
 
-          <p className="text-sm text-gray-700">
-            Scan coworker or search by name/code.
-          </p>
-
+         
           {!isWalsh && (
             <p className="text-sm text-gray-500">
               Scan coworker or search by name/code.
