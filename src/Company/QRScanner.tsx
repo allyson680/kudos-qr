@@ -1,114 +1,135 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 let QrScannerLib: typeof import("qr-scanner").default | null = null;
 
 type Props = {
   onScan: (result: string | null) => void;
   onError?: (err: Error) => void;
-  /** Try to start immediately; if blocked, we’ll show Tap-to-scan */
-  autoStart?: boolean;
+  autoStart?: boolean; // default true
+  className?: string;
 };
 
-export default function QRScanner({ onScan, onError, autoStart = true }: Props) {
+export default function QRScanner({
+  onScan,
+  onError,
+  autoStart = true,
+  className = "",
+}: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const scannerRef = useRef<any>(null);
-  const scannedOnceRef = useRef(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scannedRef = useRef(false);
 
-  const [starting, setStarting] = useState(false);
-  const [started, setStarted] = useState(false);
+  const [active, setActive] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
-  const startScanner = useCallback(async () => {
-    if (starting || started) return;
-    setStarting(true);
-    setErrMsg(null);
+  const stop = useCallback(() => {
+    try {
+      scannerRef.current?.stop();
+      scannerRef.current?.destroy?.();
+    } catch {}
+    scannerRef.current = null;
 
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setActive(false);
+  }, []);
+
+  const start = useCallback(async () => {
+    setErrMsg(null);
+    scannedRef.current = false;
     try {
       if (!QrScannerLib) {
         const mod = await import("qr-scanner");
         QrScannerLib = mod.default;
-        // worker path for bundlers
         QrScannerLib.WORKER_PATH = new URL(
           "qr-scanner/qr-scanner-worker.min.js",
           import.meta.url
         ).toString();
       }
-      if (!videoRef.current || !QrScannerLib) return;
 
-      // Clean any previous instance
-      try {
-        await scannerRef.current?.stop();
-        scannerRef.current?.destroy?.();
-      } catch {}
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      streamRef.current = stream;
 
-      scannedOnceRef.current = false;
+      if (!videoRef.current) return;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
 
-      const scanner = new QrScannerLib(
+      const s = new QrScannerLib(
         videoRef.current,
         (res: any) => {
-          if (scannedOnceRef.current) return;
+          if (scannedRef.current) return;
           const text = typeof res === "string" ? res : res?.data ?? null;
-          if (text) {
-            scannedOnceRef.current = true;
-            onScan(text);
-          }
+          if (!text) return;
+          scannedRef.current = true;
+          onScan(text);
         },
-        { returnDetailedScanResult: true, preferredCamera: "environment" }
+        { returnDetailedScanResult: true }
       );
-      scannerRef.current = scanner;
-
-      await scanner.start(); // requests camera
-      setStarted(true);
+      scannerRef.current = s;
+      await s.start();
+      setActive(true);
     } catch (e: any) {
-      // If browser blocked auto start, show Tap-to-scan
-      const msg =
-        e?.message ||
-        "Camera blocked. Tap to scan or allow camera access in your browser.";
-      setErrMsg(msg);
+      setErrMsg(
+        e?.message || "Camera unavailable. Tap to try again or type the code."
+      );
       onError?.(e);
-      setStarted(false);
-    } finally {
-      setStarting(false);
+      setActive(false);
     }
-  }, [onScan, onError, starting, started]);
+  }, [onScan, onError]);
 
   useEffect(() => {
-    if (autoStart) startScanner();
-    return () => {
-      try {
-        scannerRef.current?.stop();
-        scannerRef.current?.destroy?.();
-      } catch {}
-    };
-  }, [autoStart, startScanner]);
+    if (autoStart) start();
+    return () => stop();
+  }, [autoStart, start, stop]);
 
   return (
-    <div className="relative w-full rounded overflow-hidden">
-      <div className="aspect-[4/3] bg-black">
+    <div
+      className={`relative rounded-lg overflow-hidden border border-neutral-800 bg-black ${className}`}
+    >
+      <div className="aspect-[4/3] w-full">
         <video
           ref={videoRef}
           className="w-full h-full object-cover"
-          muted
           playsInline
+          muted
           autoPlay
         />
       </div>
 
-      {/* Tap-to-scan overlay if not started */}
-      {!started && (
+      {/* Tap-to-scan overlay when not active or on error */}
+      {!active && (
         <button
           type="button"
-          onClick={startScanner}
-          className="absolute inset-0 flex items-center justify-center bg-black/50 text-white text-sm font-medium"
+          onClick={start}
+          className="absolute inset-0 flex items-center justify-center text-white/90 bg-black/50 backdrop-blur-sm"
         >
-          {starting ? "Starting…" : "Tap to scan"}
+          <div className="px-4 py-2 rounded-full border border-white/30 bg-white/10">
+            Tap to scan
+          </div>
         </button>
       )}
 
+      {/* Corner markers */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute left-2 top-2 w-6 h-6 border-t-2 border-l-2 border-white/70 rounded-tl" />
+        <div className="absolute right-2 top-2 w-6 h-6 border-t-2 border-r-2 border-white/70 rounded-tr" />
+        <div className="absolute left-2 bottom-2 w-6 h-6 border-b-2 border-l-2 border-white/70 rounded-bl" />
+        <div className="absolute right-2 bottom-2 w-6 h-6 border-b-2 border-r-2 border-white/70 rounded-br" />
+      </div>
+
+      {/* Small error hint */}
       {errMsg && (
-        <p className="mt-1 text-xs text-red-600 text-center">{errMsg}</p>
+        <div className="absolute bottom-1 left-1 right-1 text-center text-xs text-red-400 bg-black/60 rounded px-2 py-1">
+          {errMsg}
+        </div>
       )}
     </div>
   );

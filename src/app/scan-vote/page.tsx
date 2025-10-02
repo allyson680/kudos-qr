@@ -60,7 +60,9 @@ export default function ScanVotePage() {
   const lockOut = (kind: LockKind = "daily") => {
     setLocked(true);
     setLockMsg(
-      kind === "company" ? getNextCompanyCapMessage() : getNextOutOfTokensMessage()
+      kind === "company"
+        ? getNextCompanyCapMessage()
+        : getNextOutOfTokensMessage()
     );
   };
 
@@ -136,7 +138,9 @@ export default function ScanVotePage() {
     // Require existing target
     const w = await apiLookup(code);
     if (!w) {
-      setMsg("We couldn't find that sticker. Ask your coworker to register first.");
+      setMsg(
+        "We couldn't find that sticker. Ask your coworker to register first."
+      );
       return;
     }
 
@@ -236,7 +240,8 @@ export default function ScanVotePage() {
         <section className="space-y-3">
           <div className="rounded border p-4 bg-gray-50 text-center">
             <p className="text-base font-medium">
-              {lockMsg || "You’ve hit the limit for now. Please try again later."}
+              {lockMsg ||
+                "You’ve hit the limit for now. Please try again later."}
             </p>
           </div>
         </section>
@@ -253,12 +258,16 @@ export default function ScanVotePage() {
       {step === "voter" && (
         <section className="space-y-3">
           <p className="text-sm text-gray-600">
-            Scan <b>your</b> sticker, or type it (e.g., <code>NBK1</code> / <code>JP001</code>).
+            Scan <b>your</b> sticker, or type it (e.g., <code>NBK1</code> /{" "}
+            <code>JP001</code>).
           </p>
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3] bg-black/5">
-              <QrScanner onScan={(t) => t && fetchVoterInfo(t)} onError={(e) => setMsg(e.message)} />
+              <QrScanner
+                onScan={(t) => t && fetchVoterInfo(t)}
+                onError={(e) => setMsg(e.message)}
+              />
             </div>
           </div>
 
@@ -271,7 +280,10 @@ export default function ScanVotePage() {
               inputMode="text"
               autoCapitalize="characters"
             />
-            <button className="px-4 rounded bg-black text-white" onClick={() => fetchVoterInfo(voterCode)}>
+            <button
+              className="px-4 rounded bg-black text-white"
+              onClick={() => fetchVoterInfo(voterCode)}
+            >
               Next
             </button>
           </div>
@@ -282,12 +294,12 @@ export default function ScanVotePage() {
       {step === "target" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
-                      <p className="text-sm leading-relaxed">
-                        Hello{" "}
-                        <span className="font-semibold">{voterName || voterCode}</span>,
-                        who would you like to give a virtual token to?
-                      </p>
-                    </div>
+            <p className="text-sm leading-relaxed">
+              Hello{" "}
+              <span className="font-semibold">{voterName || voterCode}</span>,
+              who would you like to give a virtual token to?
+            </p>
+          </div>
 
           {/* Walsh-only: choose the token type here */}
           {isWalsh ? (
@@ -295,13 +307,17 @@ export default function ScanVotePage() {
               <div className="text-sm mb-2">Choose token type:</div>
               <div className="flex gap-2 justify-center">
                 <button
-                  className={`px-3 py-1 rounded border ${voteType === "token" ? "bg-black text-white" : ""}`}
+                  className={`px-3 py-1 rounded border ${
+                    voteType === "token" ? "bg-black text-white" : ""
+                  }`}
                   onClick={() => setVoteType("token")}
                 >
                   Token of Excellence
                 </button>
                 <button
-                  className={`px-3 py-1 rounded border ${voteType === "goodCatch" ? "bg-black text-white" : ""}`}
+                  className={`px-3 py-1 rounded border ${
+                    voteType === "goodCatch" ? "bg-black text-white" : ""
+                  }`}
                   onClick={() => setVoteType("goodCatch")}
                 >
                   Good Catch
@@ -314,32 +330,43 @@ export default function ScanVotePage() {
             </div>
           )}
 
-          <p className="text-sm text-gray-600">Scan coworker or use search box below.</p>
+          <p className="text-sm text-gray-600">
+            Scan coworker or use search box below.
+          </p>
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3] bg-black/5">
-              <QrScanner onScan={(t) => t && fetchTargetInfo(t)} onError={(e) => setMsg(e.message)} />
+              <QrScanner
+                onScan={(t) => t && fetchTargetInfo(t)}
+                onError={(e) => setMsg(e.message)}
+              />
             </div>
           </div>
 
           {/* Search & Filter */}
           <div className="rounded border p-3 space-y-2">
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <input
-                className="flex-1 border rounded p-2"
-                placeholder="Search by name or code (e.g., Chris, nbk2/JP01)"
+                className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
+                placeholder="Search by name or code (e.g., Maria, NBK12)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
               <select
-                className="border rounded p-2"
+                className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 value={filterCompanyId}
                 onChange={(e) => setFilterCompanyId(e.target.value)}
                 title="Filter by company"
               >
-                <option value="">All companies</option>
+                <option value="" className="bg-neutral-900 text-white">
+                  All companies
+                </option>
                 {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
+                  <option
+                    key={c.id}
+                    value={c.id}
+                    className="bg-neutral-900 text-white"
+                  >
                     {c.name ?? c.id}
                   </option>
                 ))}
@@ -347,14 +374,19 @@ export default function ScanVotePage() {
             </div>
 
             {isSearching ? (
-              <p className="text-sm text-gray-500">Searching…</p>
+              <p className="text-sm text-neutral-400">Searching…</p>
             ) : results.length ? (
               <ul className="divide-y border rounded">
                 {results.map((w) => (
-                  <li key={w.code} className="flex items-center justify-between p-2">
+                  <li
+                    key={w.code}
+                    className="flex items-center justify-between p-2"
+                  >
                     <div>
-                      <div className="font-medium">{w.fullName || "(no name yet)"}</div>
-                      <div className="text-xs text-gray-600">{w.code}</div>
+                      <div className="font-medium">
+                        {w.fullName || "(no name yet)"}
+                      </div>
+                      <div className="text-xs text-neutral-400">{w.code}</div>
                     </div>
                     <button
                       className="px-3 py-1 rounded bg-black text-white"
@@ -374,8 +406,11 @@ export default function ScanVotePage() {
                 ))}
               </ul>
             ) : filterCompanyId || query.trim() ? (
-              <p className="text-sm text-gray-500">No matches found.</p>
-            ) : (null             
+              <p className="text-sm text-neutral-400">No matches found.</p>
+            ) : (
+              <p className="text-xs text-neutral-500">
+                Tip: filter by company or search a name/code.
+              </p>
             )}
           </div>
         </section>
@@ -386,14 +421,22 @@ export default function ScanVotePage() {
         <section className="space-y-3">
           <div className="rounded-lg border border-gray-200 p-3 bg-gray-100 text-gray-900 shadow-sm dark:bg-gray-900/70 dark:text-white dark:border-gray-700">
             <p className="text-sm">
-              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              Confirm token is for{" "}
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
+              ?
             </p>
           </div>
           <div className="flex gap-2">
-            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => setStep("target")}
+            >
               Cancel
             </button>
-            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
+            <button
+              className="flex-1 py-2 rounded bg-black text-white"
+              onClick={submitVote}
+            >
               Confirm
             </button>
           </div>
@@ -408,7 +451,10 @@ export default function ScanVotePage() {
         <section className="space-y-3">
           <p className="text-center">{msg}</p>
           <div className="flex gap-2">
-            <button className="flex-1 py-2 rounded border" onClick={() => setStep("target")}>
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => setStep("target")}
+            >
               Vote again
             </button>
           </div>

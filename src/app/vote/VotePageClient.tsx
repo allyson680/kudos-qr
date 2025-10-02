@@ -311,16 +311,8 @@ export default function VotePageClient() {
           </p>
 
           <QrScanner
-            onScan={(t) => {
-              if (!t) return;
-              if (/^https?:\/\//i.test(t)) {
-                // If your QR encodes a full link, jump there immediately
-                window.location.assign(t);
-                return;
-              }
-              const maybe = extractCode(t);
-              if (maybe) setVoter(maybe); // auto-advance to target step
-            }}
+            key="qr-voter"
+            onScan={(t) => t && setVoter(t)}
             onError={(e) => setMsg(e.message)}
           />
 
@@ -354,10 +346,11 @@ export default function VotePageClient() {
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          <div className="rounded border p-3 bg-emerald-50 border-emerald-200">
-            <p className="text-sm text-emerald-900">
-              Hello <b>{voterName || voterCode}</b>, who would you like to vote
-              for?
+          {/* header card — dark like confirm */}
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
+            <p className="text-sm">
+              Hello <b className="font-semibold">{voterName || voterCode}</b>,
+              who would you like to vote for?
             </p>
           </div>
 
@@ -390,11 +383,11 @@ export default function VotePageClient() {
             Scan coworker or search by name/code.
           </p>
           {/* target step scanner */}
-<QrScanner
-  key={`target-${voterCode}-${step}`}  // force fresh instance when entering target step
-  onScan={(t) => t && setTarget(t)}
-  onError={(e) => setMsg(e.message)}
-/>
+          <QrScanner
+            key="qr-target"
+            onScan={(t) => t && setTarget(t)}
+            onError={(e) => setMsg(e.message)}
+          />
 
           {/* Single input: name OR code. Form submit = Go */}
           <div className="rounded border p-3 space-y-2">
@@ -484,38 +477,38 @@ export default function VotePageClient() {
       )}
 
       {/* STEP 3 — confirm */}
-{/* STEP 3 — confirm */}
-{step === "confirm" && (
-  <section className="space-y-3">
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
-      <p className="text-sm">
-        Confirm token is for{" "}
-        <b className="font-semibold">
-          {targetName ? `${targetName} (${targetCode})` : targetCode}
-        </b>
-        ?
-      </p>
-      <div className="mt-3 flex justify-center">
-        <TypeBadge type={voteType} />
-      </div>
-    </div>
+      {/* STEP 3 — confirm */}
+      {step === "confirm" && (
+        <section className="space-y-3">
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
+            <p className="text-sm">
+              Confirm token is for{" "}
+              <b className="font-semibold">
+                {targetName ? `${targetName} (${targetCode})` : targetCode}
+              </b>
+              ?
+            </p>
+            <div className="mt-3 flex justify-center">
+              <TypeBadge type={voteType} />
+            </div>
+          </div>
 
-    <div className="flex gap-2">
-      <button
-        className="flex-1 py-2 rounded border border-neutral-300"
-        onClick={() => setStep("target")}
-      >
-        Cancel
-      </button>
-      <button
-        className="flex-1 py-2 rounded bg-black text-white"
-        onClick={submitVote}
-      >
-        Confirm
-      </button>
-    </div>
-  </section>
-)}
+          <div className="flex gap-2">
+            <button
+              className="flex-1 py-2 rounded border border-neutral-300"
+              onClick={() => setStep("target")}
+            >
+              Cancel
+            </button>
+            <button
+              className="flex-1 py-2 rounded bg-black text-white"
+              onClick={submitVote}
+            >
+              Confirm
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* STEP 4 — done */}
       {step === "done" && (

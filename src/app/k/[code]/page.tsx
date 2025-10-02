@@ -544,64 +544,61 @@ export default function CodePage({ params }: { params: { code: string } }) {
 
             {/* 🔎 Search & Filter */}
             <div className="rounded border p-3 space-y-2">
-              <div className="flex gap-2">
-                <input
-                  className="flex-1 border rounded p-2"
-                  placeholder="Search by name or code (e.g., Chris, nbk2/JP01)"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                <select
-                  className="border rounded p-2"
-                  value={filterCompanyId}
-                  onChange={(e) => setFilterCompanyId(e.target.value)}
-                  title="Filter by company"
-                >
-                  <option value="">All companies</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name ?? c.id}
-                    </option>
-                  ))}
-                </select>
-              </div>
+  <div className="flex flex-col gap-2">
+    <input
+      className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
+      placeholder="Search by name or code (e.g., Maria, NBK12)"
+      value={query}
+      onChange={(e) => setQuery(e.target.value)}
+    />
+    <select
+      className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      value={filterCompanyId}
+      onChange={(e) => setFilterCompanyId(e.target.value)}
+      title="Filter by company"
+    >
+      <option value="" className="bg-neutral-900 text-white">All companies</option>
+      {companies.map((c) => (
+        <option key={c.id} value={c.id} className="bg-neutral-900 text-white">
+          {c.name ?? c.id}
+        </option>
+      ))}
+    </select>
+  </div>
 
-              {isSearching ? (
-                <p className="text-sm text-gray-500">Searching…</p>
-              ) : results.length ? (
-                <ul className="divide-y border rounded">
-                  {results.map((w) => (
-                    <li
-                      key={w.code}
-                      className="flex items-center justify-between p-2"
-                    >
-                      <div>
-                        <div className="font-medium">
-                          {w.fullName || "(no name yet)"}
-                        </div>
-                        <div className="text-xs text-gray-600">{w.code}</div>
-                      </div>
-                      <button
-                        className="px-3 py-1 rounded bg-black text-white"
-                        onClick={() => {
-                          if (getProjectFromCode(w.code) !== project) {
-                            setFeedback("Same-project only (NBK→NBK, JP→JP)");
-                            return;
-                          }
-                          setTargetCode(w.code);
-                          setTargetName(w.fullName || "");
-                          setStep("confirm");
-                        }}
-                      >
-                        Select
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : filterCompanyId || query.trim() ? (
-                <p className="text-sm text-gray-500">No matches found.</p>
-              ) : null}
-            </div>
+  {isSearching ? (
+    <p className="text-sm text-neutral-400">Searching…</p>
+  ) : results.length ? (
+    <ul className="divide-y border rounded">
+      {results.map((w) => (
+        <li key={w.code} className="flex items-center justify-between p-2">
+          <div>
+            <div className="font-medium">{w.fullName || "(no name yet)"}</div>
+            <div className="text-xs text-neutral-400">{w.code}</div>
+          </div>
+          <button
+            className="px-3 py-1 rounded bg-black text-white"
+            onClick={() => {
+              if (getProjectFromCode(w.code) !== project) {
+                setMsg("Same-project only (NBK→NBK, JP→JP)");
+                return;
+              }
+              setTargetCode(w.code);
+              setTargetName(w.fullName || "");
+              setStep("confirm");
+            }}
+          >
+            Select
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : filterCompanyId || query.trim() ? (
+    <p className="text-sm text-neutral-400">No matches found.</p>
+  ) : (
+    <p className="text-xs text-neutral-500">Tip: filter by company or search a name/code.</p>
+  )}
+</div>
 
             {feedback && <p className="text-sm text-center">{feedback}</p>}
           </>
