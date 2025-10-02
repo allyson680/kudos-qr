@@ -54,7 +54,7 @@ export default function VotePageClient() {
   const [isSearching, setIsSearching] = useState(false);
 
   // scanner overlay control
-  const [scanOpen, setScanOpen] = useState(false);          // start closed
+  const [scanOpen, setScanOpen] = useState(false); // start closed
   const [msg, setMsg] = useState("");
 
   // lock state
@@ -131,7 +131,33 @@ export default function VotePageClient() {
     await checkLimits(code);
 
     setStep("target");
-    setScanOpen(false);                                     // ⬅️ keep “Tap to scan” visible until user taps
+    setScanOpen(false); // ⬅️ keep “Tap to scan” visible until user taps
+  }
+
+  async function handleSearchSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const raw = query.trim();
+
+    // try as a code first
+    const asCode = normalizeSticker(raw);
+    if (asCode) {
+      await setTarget(asCode); // will validate project and existence
+      return;
+    }
+
+    // not a code — if exactly one match, auto-select it
+    if (results.length === 1) {
+      const w = results[0];
+      if (getProjectFromCode(w.code) !== voterProject) {
+        setMsg("Same-project only (NBK→NBK, JP→JP)");
+        return;
+      }
+      setTargetCode(w.code);
+      setTargetName(w.fullName || "");
+      setScanOpen(false);
+      setStep("confirm");
+    }
+    // otherwise do nothing — the list below is already filtered
   }
 
   async function setTarget(raw: string) {
@@ -211,7 +237,7 @@ export default function VotePageClient() {
         }
         setMsg(json.error || "Error");
         setStep("target");
-        setScanOpen(false);                                  // ⬅️ keep overlay; user can tap to re-open
+        setScanOpen(false); // ⬅️ keep overlay; user can tap to re-open
       }
     } catch (e: any) {
       setMsg(e?.message || "Network error");
@@ -277,8 +303,7 @@ export default function VotePageClient() {
       <main className="p-4 max-w-md mx-auto space-y-4">
         <section className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white text-center">
           <p className="text-base font-medium">
-            {lockMsg ||
-              "You’ve hit the limit for now. Please try again later."}
+            {lockMsg || "You’ve hit the limit for now. Please try again later."}
           </p>
         </section>
       </main>
@@ -333,8 +358,8 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
             <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to vote
-              for?
+              Hello <b>{voterName || voterCode}</b>, who would you like to give
+              a virtual token to?
             </p>
 
             {isWalsh ? (
@@ -380,47 +405,28 @@ export default function VotePageClient() {
               )}
               {scanOpen && (
                 <QrScanner
-                  key={`scanner-${step}-${scanOpen}`}  // ⬅️ force clean remount
+                  key={`scanner-${step}-${scanOpen}`} // ⬅️ force clean remount
                   onScan={(t) => t && setTarget(t)}
                   onError={(e) => {
                     setMsg(e.message);
-                    setScanOpen(false);               // ⬅️ fall back to overlay if camera fails
+                    setScanOpen(false); // ⬅️ fall back to overlay if camera fails
                   }}
                 />
               )}
             </div>
           </div>
 
-          {/* Manual entry */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setTarget(targetCode);
-            }}
-            className="flex gap-2"
-          >
-            <input
-              className="flex-1 border rounded p-2"
-              placeholder="Coworker code (e.g., nbk2 / JP010)"
-              value={targetCode}
-              onChange={(e) => setTargetCode(e.target.value)}
-              inputMode="text"
-              autoCapitalize="characters"
-              autoCorrect="off"
-            />
-            <button className="px-4 rounded bg-black text-white" type="submit">
-              Next
-            </button>
-          </form>
-
-          {/* Search & Filter */}
+          {/* Search & Filter (combined) */}
           <div className="rounded border p-3 space-y-2">
-            <div className="space-y-2">
+            <form onSubmit={handleSearchSubmit} className="space-y-2">
               <input
                 className="w-full border rounded p-2"
-                placeholder="Search by name or code (e.g., Maria, NBK12)"
+                placeholder="Search by name or code (e.g., Maria, NBK12, JP010)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoCapitalize="characters"
+                autoCorrect="off"
               />
               <select
                 className="w-full border rounded p-2 bg-neutral-900 text-white"
@@ -435,7 +441,12 @@ export default function VotePageClient() {
                   </option>
                 ))}
               </select>
-            </div>
+              {/* Optional small hint */}
+              <p className="text-xs text-gray-500">
+                Tip: Type a code like <code>NBK1</code> or <code>JP010</code>{" "}
+                and press Go/Enter.
+              </p>
+            </form>
 
             {isSearching ? (
               <p className="text-sm text-gray-500">Searching…</p>
@@ -489,9 +500,7 @@ export default function VotePageClient() {
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
               Confirm token is for{" "}
-              <b>
-                {targetName ? `${targetName} (${targetCode})` : targetCode}
-              </b>
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
               ?
             </p>
             <div className="mt-3 flex justify-center">
@@ -503,7 +512,7 @@ export default function VotePageClient() {
               className="flex-1 py-2 rounded border"
               onClick={() => {
                 setStep("target");
-                setScanOpen(false);                       // come back to overlay
+                setScanOpen(false); // come back to overlay
               }}
             >
               Cancel
@@ -531,9 +540,9 @@ export default function VotePageClient() {
                 setTargetCode("");
                 setTargetName("");
                 setQuery("");
-                setFilterCompanyId("");                   // reset to All companies
+                setFilterCompanyId(""); // reset to All companies
                 setStep("target");
-                setScanOpen(false);                       // show overlay first
+                setScanOpen(false); // show overlay first
               }}
             >
               Vote again
