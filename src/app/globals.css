@@ -31,6 +31,32 @@ select.bg-neutral-900 option {
   color: #fff;
 }
 
+/* Force native <select> & <option> into dark in mobile browsers */
+select.dark-select {
+  background-color: #111827;   /* neutral-900 */
+  color: #fff;
+  border-color: #374151;       /* neutral-700 */
+  -webkit-appearance: none;    /* iOS */
+  appearance: none;
+}
+
+/* Some UAs render options with their own palette */
+select.dark-select option {
+  background-color: #111827;   /* neutral-900 */
+  color: #fff;
+}
+
+/* Optional: a small chevron so the control still looks like a select */
+.select-chev {
+  pointer-events: none;
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: .8;
+}
+
+
 
 /* --- Coin Shine Effect --- */
 /* Applies a subtle diagonal highlight sweep */

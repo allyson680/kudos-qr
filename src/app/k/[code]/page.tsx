@@ -1,6 +1,5 @@
-// src/app/k/[code]/page.tsx
 "use client";
-
+import QRScanner from "@/components/QRScanner";
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
@@ -518,12 +517,9 @@ export default function CodePage({ params }: { params: { code: string } }) {
 
             <div className="rounded border overflow-hidden">
               <div className="aspect-[4/3] bg-black/5">
-                <QrScanner
-                  onScan={(text: string | null) =>
-                    text && fetchTargetInfo(text)
-                  }
-                  onError={(err: Error) => setFeedback(err.message)}
-                />
+               <QRScanner autoStart onScan={(t) => t && fetchTargetInfo(t)} onError={(e) => setFeedback(e.message)} />
+
+
               </div>
             </div>
 

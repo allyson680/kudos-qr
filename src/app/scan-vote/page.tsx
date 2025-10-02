@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
+
 import {
   getNextOutOfTokensMessage,
   getNextCompanyCapMessage,
@@ -345,32 +346,43 @@ export default function ScanVotePage() {
 
           {/* Search & Filter */}
           <div className="rounded border p-3 space-y-2">
-            <div className="flex flex-col gap-2">
+            <div className="space-y-2">
               <input
-                className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
+                className="w-full border rounded p-2 bg-neutral-900 text-white placeholder-gray-400"
                 placeholder="Search by name or code (e.g., Maria, NBK12)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter")
+                    setQuery((e.target as HTMLInputElement).value);
+                }}
               />
-              <select
-                className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                value={filterCompanyId}
-                onChange={(e) => setFilterCompanyId(e.target.value)}
-                title="Filter by company"
-              >
-                <option value="" className="bg-neutral-900 text-white">
-                  All companies
-                </option>
-                {companies.map((c) => (
-                  <option
-                    key={c.id}
-                    value={c.id}
-                    className="bg-neutral-900 text-white"
-                  >
-                    {c.name ?? c.id}
-                  </option>
-                ))}
-              </select>
+
+              {/* full-width, dark select below the search input */}
+              <div className="relative">
+                <select
+                  className="dark-select w-full border rounded p-2 pr-9"
+                  value={filterCompanyId}
+                  onChange={(e) => setFilterCompanyId(e.target.value)}
+                  title="Filter by company"
+                >
+                  <option value="">All companies</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name ?? c.id}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  className="select-chev"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path d="M7 10l5 5 5-5z" />
+                </svg>
+              </div>
             </div>
 
             {isSearching ? (

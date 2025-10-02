@@ -1,6 +1,7 @@
 "use client";
 
 import QRScanner from "@/Company/QRScanner";
+
 import { trySyncVotes } from "@/lib/syncVotes";
 import { useState } from "react";
 

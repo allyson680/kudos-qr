@@ -2,6 +2,7 @@
 import { Suspense } from "react";
 import VotePageClient from "./VotePageClient";
 
+
 // Optional: if you fetch on client and don't want static rendering/caching
 export const dynamic = "force-dynamic";
 

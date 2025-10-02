@@ -1,5 +1,5 @@
 "use client";
-
+import QRScanner from "@/components/QRScanner";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -310,11 +310,8 @@ export default function VotePageClient() {
             Scan your sticker, or type it.
           </p>
 
-          <QrScanner
-            key="qr-voter"
-            onScan={(t) => t && setVoter(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+          <QRScanner autoStart onScan={(t) => t && setVoter(t)} onError={(e) => setMsg(e.message)} />
+
 
           {/* Form: lets phone “Go” submit */}
           <form
@@ -383,11 +380,8 @@ export default function VotePageClient() {
             Scan coworker or search by name/code.
           </p>
           {/* target step scanner */}
-          <QrScanner
-            key="qr-target"
-            onScan={(t) => t && setTarget(t)}
-            onError={(e) => setMsg(e.message)}
-          />
+          <QRScanner autoStart onScan={(t) => t && setVoter(t)} onError={(e) => setMsg(e.message)} />
+
 
           {/* Single input: name OR code. Form submit = Go */}
           <div className="rounded border p-3 space-y-2">
