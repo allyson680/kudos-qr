@@ -249,6 +249,14 @@ export default function VotePageClient() {
   }, [step]);
 
   // Search workers when filter/query changes (only on target step)
+  function resetTargetSearch() {
+  setFilterCompanyId("");   // back to “All companies”
+  setQuery("");             // clear search text
+  setResults([]);           // clear old results
+  setTargetCode("");        // clear manual code input
+  setTargetName("");
+}
+
   useEffect(() => {
     if (step !== "target") return;
 
@@ -310,8 +318,11 @@ export default function VotePageClient() {
             Scan your sticker, or type it.
           </p>
 
-          <QRScanner autoStart onScan={(t) => t && setVoter(t)} onError={(e) => setMsg(e.message)} />
-
+          <QRScanner
+            autoStart
+            onScan={(t) => t && setVoter(t)}
+            onError={(e) => setMsg(e.message)}
+          />
 
           {/* Form: lets phone “Go” submit */}
           <form
@@ -380,8 +391,11 @@ export default function VotePageClient() {
             Scan coworker or search by name/code.
           </p>
           {/* target step scanner */}
-          <QRScanner autoStart onScan={(t) => t && setVoter(t)} onError={(e) => setMsg(e.message)} />
-
+          <QRScanner
+            autoStart
+            onScan={(t) => t && setVoter(t)}
+            onError={(e) => setMsg(e.message)}
+          />
 
           {/* Single input: name OR code. Form submit = Go */}
           <div className="rounded border p-3 space-y-2">
@@ -511,7 +525,11 @@ export default function VotePageClient() {
           <div className="flex gap-2">
             <button
               className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
+              onClick={() => {
+                resetTargetSearch();
+                setMsg("");
+                setStep("target");
+              }}
             >
               Vote again
             </button>

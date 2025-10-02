@@ -237,6 +237,15 @@ export default function CodePage({ params }: { params: { code: string } }) {
   }, [voterCode]);
 
   // Search when on the target step
+
+  function resetTargetSearch() {
+  setFilterCompanyId("");   // back to “All companies”
+  setQuery("");             // clear search text
+  setResults([]);           // clear old results
+  setTargetCode("");        // clear manual code input
+  setTargetName("");
+}
+
   useEffect(() => {
     if (step !== "target") return;
 
@@ -287,6 +296,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
         setMe(json.worker);
         setMsg(me ? "Updated!" : "Registered! You’re all set.");
         await checkLimits(voterCode, companyId);
+        resetTargetSearch(); // ⬅️ add this
         setStep("target");
       } else {
         setMsg(json.error || "Error");
@@ -405,18 +415,20 @@ export default function CodePage({ params }: { params: { code: string } }) {
       <main className="min-h-screen flex items-center justify-center p-6">
         <div className="w-full max-w-md space-y-4">
           <h1 className="text-2xl font-bold text-center">Your Sticker</h1>
-          <div className="rounded border p-3">
-            <div className="text-sm text-gray-500">Sticker code</div>
+
+          <div className="rounded border border-neutral-700 bg-neutral-900/80 text-neutral-100 shadow-md backdrop-blur-sm p-4">
+            <div className="text-sm text-neutral-300">Sticker code</div>
             <div className="text-xl font-mono">{voterCode}</div>
             <div className="text-sm">
               Project: <b>{project}</b>
             </div>
           </div>
+
           <section className="space-y-3">
-            <div className="rounded border p-4 bg-gray-50 text-center">
+            <div className="rounded-xl border border-neutral-700 bg-neutral-900/80 text-neutral-100 shadow-md backdrop-blur-sm p-4 text-center">
               <p className="text-base font-medium">
                 {lockMsg ||
-                  "You’ve given all 3 tokens for today. Come back tomorrow."}
+                  "You’ve given all your tokens for today. Come back tomorrow."}
               </p>
             </div>
           </section>
@@ -517,9 +529,11 @@ export default function CodePage({ params }: { params: { code: string } }) {
 
             <div className="rounded border overflow-hidden">
               <div className="aspect-[4/3] bg-black/5">
-               <QRScanner autoStart onScan={(t) => t && fetchTargetInfo(t)} onError={(e) => setFeedback(e.message)} />
-
-
+                <QRScanner
+                  autoStart
+                  onScan={(t) => t && fetchTargetInfo(t)}
+                  onError={(e) => setFeedback(e.message)}
+                />
               </div>
             </div>
 
@@ -540,61 +554,74 @@ export default function CodePage({ params }: { params: { code: string } }) {
 
             {/* 🔎 Search & Filter */}
             <div className="rounded border p-3 space-y-2">
-  <div className="flex flex-col gap-2">
-    <input
-      className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
-      placeholder="Search by name or code (e.g., Maria, NBK12)"
-      value={query}
-      onChange={(e) => setQuery(e.target.value)}
-    />
-    <select
-      className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-      value={filterCompanyId}
-      onChange={(e) => setFilterCompanyId(e.target.value)}
-      title="Filter by company"
-    >
-      <option value="" className="bg-neutral-900 text-white">All companies</option>
-      {companies.map((c) => (
-        <option key={c.id} value={c.id} className="bg-neutral-900 text-white">
-          {c.name ?? c.id}
-        </option>
-      ))}
-    </select>
-  </div>
+              <div className="flex flex-col gap-2">
+                <input
+                  className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
+                  placeholder="Search by name or code (e.g., Maria, NBK12)"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                <select
+                  className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  value={filterCompanyId}
+                  onChange={(e) => setFilterCompanyId(e.target.value)}
+                  title="Filter by company"
+                >
+                  <option value="" className="bg-neutral-900 text-white">
+                    All companies
+                  </option>
+                  {companies.map((c) => (
+                    <option
+                      key={c.id}
+                      value={c.id}
+                      className="bg-neutral-900 text-white"
+                    >
+                      {c.name ?? c.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-  {isSearching ? (
-    <p className="text-sm text-neutral-400">Searching…</p>
-  ) : results.length ? (
-    <ul className="divide-y border rounded">
-      {results.map((w) => (
-        <li key={w.code} className="flex items-center justify-between p-2">
-          <div>
-            <div className="font-medium">{w.fullName || "(no name yet)"}</div>
-            <div className="text-xs text-neutral-400">{w.code}</div>
-          </div>
-          <button
-            className="px-3 py-1 rounded bg-black text-white"
-            onClick={() => {
-              if (getProjectFromCode(w.code) !== project) {
-                setMsg("Same-project only (NBK→NBK, JP→JP)");
-                return;
-              }
-              setTargetCode(w.code);
-              setTargetName(w.fullName || "");
-              setStep("confirm");
-            }}
-          >
-            Select
-          </button>
-        </li>
-      ))}
-    </ul>
-  ) : filterCompanyId || query.trim() ? (
-    <p className="text-sm text-neutral-400">No matches found.</p>
-  ) : (
-    <p className="text-xs text-neutral-500">Tip: filter by company or search a name/code.</p>
-  )}
-</div>
+              {isSearching ? (
+                <p className="text-sm text-neutral-400">Searching…</p>
+              ) : results.length ? (
+                <ul className="divide-y border rounded">
+                  {results.map((w) => (
+                    <li
+                      key={w.code}
+                      className="flex items-center justify-between p-2"
+                    >
+                      <div>
+                        <div className="font-medium">
+                          {w.fullName || "(no name yet)"}
+                        </div>
+                        <div className="text-xs text-neutral-400">{w.code}</div>
+                      </div>
+                      <button
+                        className="px-3 py-1 rounded bg-black text-white"
+                        onClick={() => {
+                          if (getProjectFromCode(w.code) !== project) {
+                            setMsg("Same-project only (NBK→NBK, JP→JP)");
+                            return;
+                          }
+                          setTargetCode(w.code);
+                          setTargetName(w.fullName || "");
+                          setStep("confirm");
+                        }}
+                      >
+                        Select
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : filterCompanyId || query.trim() ? (
+                <p className="text-sm text-neutral-400">No matches found.</p>
+              ) : (
+                <p className="text-xs text-neutral-500">
+                  Tip: filter by company or search a name/code.
+                </p>
+              )}
+            </div>
 
             {feedback && <p className="text-sm text-center">{feedback}</p>}
           </>
@@ -641,7 +668,11 @@ export default function CodePage({ params }: { params: { code: string } }) {
             <div className="flex gap-2">
               <button
                 className="flex-1 py-2 rounded border"
-                onClick={() => setStep("target")}
+                onClick={() => {
+                  resetTargetSearch();
+                  setMsg("");
+                  setStep("target");
+                }}
               >
                 Vote again
               </button>

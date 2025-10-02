@@ -206,6 +206,14 @@ export default function ScanVotePage() {
   }, [step]);
 
   // Search workers on target step
+  function resetTargetSearch() {
+  setFilterCompanyId("");   // back to “All companies”
+  setQuery("");             // clear search text
+  setResults([]);           // clear old results
+  setTargetCode("");        // clear manual code input
+  setTargetName("");
+}
+
   useEffect(() => {
     if (step !== "target") return;
     if (!filterCompanyId && !query.trim()) {
@@ -464,11 +472,16 @@ export default function ScanVotePage() {
           <p className="text-center">{msg}</p>
           <div className="flex gap-2">
             <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => setStep("target")}
-            >
-              Vote again
-            </button>
+  className="flex-1 py-2 rounded border"
+  onClick={() => {
+    resetTargetSearch();
+    setMsg("");
+    setStep("target");
+  }}
+>
+  Vote again
+</button>
+
           </div>
         </section>
       )}
