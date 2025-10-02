@@ -54,11 +54,10 @@ export default function VotePageClient() {
   const [isSearching, setIsSearching] = useState(false);
 
   // scanner overlay control
-  const [scanOpen, setScanOpen] = useState(false);
-
+  const [scanOpen, setScanOpen] = useState(false);          // start closed
   const [msg, setMsg] = useState("");
 
-  // lock state (used for daily OR company cap)
+  // lock state
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
@@ -79,7 +78,6 @@ export default function VotePageClient() {
     return json?.existing ?? null;
   }
 
-  // Check both limits (daily + company monthly)
   async function checkLimits(voter: string, companyId?: string) {
     try {
       const params = new URLSearchParams({ voter });
@@ -131,8 +129,9 @@ export default function VotePageClient() {
     setVoterName(w.fullName ?? "");
     setVoterCompanyId(w.companyId ?? "");
     await checkLimits(code);
+
     setStep("target");
-    setScanOpen(true); // auto-open scanner on target step
+    setScanOpen(false);                                     // ⬅️ keep “Tap to scan” visible until user taps
   }
 
   async function setTarget(raw: string) {
@@ -140,7 +139,6 @@ export default function VotePageClient() {
     const code = normalizeSticker(raw);
     if (!code) return;
 
-    // Same-project client check (server enforces too)
     if (getProjectFromCode(code) !== voterProject) {
       setMsg("Same-project only (NBK→NBK, JP→JP)");
       return;
@@ -156,7 +154,7 @@ export default function VotePageClient() {
 
     setTargetCode(code);
     setTargetName(w.fullName ?? "");
-    setScanOpen(false); // ensure scanner overlay is closed
+    setScanOpen(false);
     setStep("confirm");
   }
 
@@ -213,26 +211,24 @@ export default function VotePageClient() {
         }
         setMsg(json.error || "Error");
         setStep("target");
-        setScanOpen(true);
+        setScanOpen(false);                                  // ⬅️ keep overlay; user can tap to re-open
       }
     } catch (e: any) {
       setMsg(e?.message || "Network error");
       setStep("target");
-      setScanOpen(true);
+      setScanOpen(false);
     }
   }
 
-  // When step changes, only allow overlay scanning on voter/target
+  // Close camera whenever you’re not on a scanning step
   useEffect(() => {
     if (step === "confirm" || step === "done") setScanOpen(false);
   }, [step]);
 
-  // If we land with ?voter=... in the URL, check limits early
   useEffect(() => {
     if (voterFromQS) checkLimits(voterFromQS);
   }, [voterFromQS]);
 
-  // Load companies for the filter when we reach the target step
   useEffect(() => {
     if (step !== "target") return;
     (async () => {
@@ -240,13 +236,10 @@ export default function VotePageClient() {
         const res = await fetch("/api/register", { cache: "no-store" });
         const json = await res.json();
         setCompanies(Array.isArray(json.companies) ? json.companies : []);
-      } catch {
-        // ignore
-      }
+      } catch {}
     })();
   }, [step]);
 
-  // Search workers when filter/query changes (only on target step)
   useEffect(() => {
     if (step !== "target") return;
 
@@ -279,7 +272,6 @@ export default function VotePageClient() {
     };
   }, [step, filterCompanyId, query, voterProject]);
 
-  // 🔒 Early locked view
   if (dailyLocked) {
     return (
       <main className="p-4 max-w-md mx-auto space-y-4">
@@ -304,7 +296,6 @@ export default function VotePageClient() {
             <p className="text-sm">Scan your sticker, or type it.</p>
           </div>
 
-          {/* Scanner block (auto-open here) */}
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3]">
               <QrScanner
@@ -340,14 +331,12 @@ export default function VotePageClient() {
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          {/* Hello card */}
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
             <p className="text-sm">
               Hello <b>{voterName || voterCode}</b>, who would you like to vote
               for?
             </p>
 
-            {/* Walsh-only: choose the token type here */}
             {isWalsh ? (
               <>
                 <div className="mt-3 flex items-center justify-center gap-4">
@@ -377,7 +366,7 @@ export default function VotePageClient() {
             )}
           </div>
 
-          {/* Tap-to-scan / auto-scan panel */}
+          {/* Tap to scan panel */}
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3] relative">
               {!scanOpen && (
@@ -391,14 +380,18 @@ export default function VotePageClient() {
               )}
               {scanOpen && (
                 <QrScanner
+                  key={`scanner-${step}-${scanOpen}`}  // ⬅️ force clean remount
                   onScan={(t) => t && setTarget(t)}
-                  onError={(e) => setMsg(e.message)}
+                  onError={(e) => {
+                    setMsg(e.message);
+                    setScanOpen(false);               // ⬅️ fall back to overlay if camera fails
+                  }}
                 />
               )}
             </div>
           </div>
 
-          {/* Manual code entry */}
+          {/* Manual entry */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -510,7 +503,7 @@ export default function VotePageClient() {
               className="flex-1 py-2 rounded border"
               onClick={() => {
                 setStep("target");
-                setScanOpen(true);
+                setScanOpen(false);                       // come back to overlay
               }}
             >
               Cancel
@@ -535,13 +528,12 @@ export default function VotePageClient() {
             <button
               className="flex-1 py-2 rounded border"
               onClick={() => {
-                // reset for a fresh vote
                 setTargetCode("");
                 setTargetName("");
                 setQuery("");
-                setFilterCompanyId(""); // reset filter to "All companies"
+                setFilterCompanyId("");                   // reset to All companies
                 setStep("target");
-                setScanOpen(true);
+                setScanOpen(false);                       // show overlay first
               }}
             >
               Vote again
