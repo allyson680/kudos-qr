@@ -628,36 +628,37 @@ export default function CodePage({ params }: { params: { code: string } }) {
         )}
 
         {/* STEP 3 — confirm */}
-        {step === "confirm" && (
-          <>
-            <div className="rounded border p-3 bg-gray-50">
-              <p className="text-sm">
-                Confirm vote for{" "}
-                <b>
-                  {targetName ? `${targetName} (${targetCode})` : targetCode}
-                </b>
-                ?
-              </p>
-              <div className="mt-2 flex justify-center">
-                <TypeBadge type={voteType} />
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button
-                className="flex-1 py-2 rounded border"
-                onClick={() => setStep("target")}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 py-2 rounded bg-black text-white"
-                onClick={submitVote}
-              >
-                Confirm
-              </button>
-            </div>
-          </>
-        )}
+      {step === "confirm" && (
+  <section className="space-y-3">
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
+      <p className="text-sm">
+        Confirm token is for{" "}
+        <b className="font-semibold">
+          {targetName ? `${targetName} (${targetCode})` : targetCode}
+        </b>
+        ?
+      </p>
+      <div className="mt-3 flex justify-center">
+        <TypeBadge type={voteType} />
+      </div>
+    </div>
+
+    <div className="flex gap-2">
+      <button
+        className="flex-1 py-2 rounded border border-neutral-300"
+        onClick={() => setStep("target")}
+      >
+        Cancel
+      </button>
+      <button
+        className="flex-1 py-2 rounded bg-black text-white"
+        onClick={submitVote}
+      >
+        Confirm
+      </button>
+    </div>
+  </section>
+)}
 
         {/* STEP 4 — done */}
         {step === "done" && (

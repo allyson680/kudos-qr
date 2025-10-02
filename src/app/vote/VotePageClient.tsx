@@ -250,12 +250,12 @@ export default function VotePageClient() {
 
   // Search workers when filter/query changes (only on target step)
   function resetTargetSearch() {
-  setFilterCompanyId("");   // back to “All companies”
-  setQuery("");             // clear search text
-  setResults([]);           // clear old results
-  setTargetCode("");        // clear manual code input
-  setTargetName("");
-}
+    setFilterCompanyId(""); // back to “All companies”
+    setQuery(""); // clear search text
+    setResults([]); // clear old results
+    setTargetCode(""); // clear manual code input
+    setTargetName("");
+  }
 
   useEffect(() => {
     if (step !== "target") return;
@@ -358,7 +358,7 @@ export default function VotePageClient() {
           <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
             <p className="text-sm">
               Hello <b className="font-semibold">{voterName || voterCode}</b>,
-              who would you like to vote for?
+              who would you like to give a virtual token to?
             </p>
           </div>
 
@@ -390,6 +390,13 @@ export default function VotePageClient() {
           <p className="text-sm text-gray-700">
             Scan coworker or search by name/code.
           </p>
+
+          {!isWalsh && (
+            <p className="text-sm text-gray-500">
+              Scan coworker or search by name/code.
+            </p>
+          )}
+
           {/* target step scanner */}
           <QRScanner
             autoStart
@@ -486,37 +493,6 @@ export default function VotePageClient() {
 
       {/* STEP 3 — confirm */}
       {/* STEP 3 — confirm */}
-      {step === "confirm" && (
-        <section className="space-y-3">
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
-            <p className="text-sm">
-              Confirm token is for{" "}
-              <b className="font-semibold">
-                {targetName ? `${targetName} (${targetCode})` : targetCode}
-              </b>
-              ?
-            </p>
-            <div className="mt-3 flex justify-center">
-              <TypeBadge type={voteType} />
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border border-neutral-300"
-              onClick={() => setStep("target")}
-            >
-              Cancel
-            </button>
-            <button
-              className="flex-1 py-2 rounded bg-black text-white"
-              onClick={submitVote}
-            >
-              Confirm
-            </button>
-          </div>
-        </section>
-      )}
 
       {/* STEP 4 — done */}
       {step === "done" && (
