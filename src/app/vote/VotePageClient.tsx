@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
@@ -47,6 +48,7 @@ function extractStickerFromText(raw: string): string | null {
 
 export default function VotePageClient() {
   const qs = useSearchParams();
+  const router = useRouter();
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
   const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
@@ -139,31 +141,33 @@ export default function VotePageClient() {
 
   /** Stable voter setter (prevents scanner reinit thrash) */
   const setVoter = useCallback(
-    async (raw: string) => {
-      setMsg("");
-      const code = extractStickerFromText(raw);
-      if (!code) return;
+  async (raw: string) => {
+    setMsg("");
+    const code = extractStickerFromText(raw);
+    if (!code) return;
 
-      setVoterCode(code);
-      const w = await apiLookup(code);
+    setVoterCode(code);
+    const w = await apiLookup(code);
 
-      if (!w) {
-        setVoterName("");
-        setVoterCompanyId("");
-        setMsg("We didn’t find your code. Please register first.");
-        return;
-      }
+    if (!w) {
+      setVoterName("");
+      setVoterCompanyId("");
+      setScanOpen(false);
+      setMsg("We didn’t find your code. Redirecting to register…");
+      // send them to the registration page for their sticker
+      setTimeout(() => router.push(`/k/${code}`), 300);
+      return;
+    }
 
-      setVoterName(w.fullName ?? "");
-      setVoterCompanyId(w.companyId ?? "");
-      await checkLimits(code);
+    setVoterName(w.fullName ?? "");
+    setVoterCompanyId(w.companyId ?? "");
+    await checkLimits(code);
 
-      setStep("target");
-      setScanOpen(false); // keep “Tap to scan” overlay until tapped
-    },
-    [] // no deps (safe)
-  );
-
+    setStep("target");
+    setScanOpen(false); // keep overlay until they tap to scan
+  },
+  [router]
+);
   /** Stable target setter */
   const setTarget = useCallback(
     async (raw: string) => {
@@ -275,6 +279,23 @@ export default function VotePageClient() {
       } catch {}
     })();
   }, [step]);
+
+  useEffect(() => {
+  if (!voterFromQS) return;
+  (async () => {
+    const w = await apiLookup(voterFromQS);
+    if (!w) {
+      // if someone opens /vote?voter=NBK1 and NBK1 isn't registered, send them to /k/NBK0001
+      router.replace(`/k/${voterFromQS}`);
+      return;
+    }
+    setVoterCode(voterFromQS);
+    setVoterName(w.fullName ?? "");
+    setVoterCompanyId(w.companyId ?? "");
+    setStep("target");
+  })();
+}, [voterFromQS, router]);
+
 
   // Search workers (target step only)
   useEffect(() => {
