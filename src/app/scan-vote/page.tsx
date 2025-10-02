@@ -339,9 +339,12 @@ export default function ScanVotePage() {
             </div>
           )}
 
-          <p className="text-sm text-gray-600">
-            Scan coworker or use search box below.
-          </p>
+            
+          {!isWalsh && (
+            <p className="text-sm text-gray-500">
+              Scan coworker or search by name/code.
+            </p>
+          )}
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3] bg-black/5">

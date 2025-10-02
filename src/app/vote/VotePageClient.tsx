@@ -381,18 +381,16 @@ export default function VotePageClient() {
                   onClick={() => setVoteType("goodCatch")}
                 />
               </div>
-              <p className="text-xs text-center text-gray-500">
-                Tap a token above, then scan or search your coworker.
-              </p>
-            </>
-          ) : null}
-
-         
+                
           {!isWalsh && (
             <p className="text-sm text-gray-500">
               Scan coworker or search by name/code.
             </p>
           )}
+            </>
+          ) : null}
+
+       
 
           {/* target step scanner */}
           <QRScanner
