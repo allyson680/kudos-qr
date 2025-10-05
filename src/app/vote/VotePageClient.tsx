@@ -522,13 +522,13 @@ export default function VotePageClient() {
           <div className="rounded border p-3 space-y-2">
             {/* ⬅️ Instruction moved to top */}
             <p className="text-xs text-gray-300">
-              Search by name or code, or filter by company.
+              Search by name or code - or filter by company.
             </p>
 
             <form onSubmit={handleSearchSubmit} className="space-y-2">
               <input
                 className="w-full border rounded p-2"
-                placeholder="Search by name or code (e.g., Maria, NBK12, JP010)"
+                placeholder="Search name or code (Sam, nbk1 / JP001)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 inputMode="search"

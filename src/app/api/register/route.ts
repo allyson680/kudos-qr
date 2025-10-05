@@ -1,3 +1,4 @@
+// src/app/api/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 /**
  * If the worker doc exists under a dashed id (e.g. NBK-0001), move it to no-dash (NBK0001).
  * Returns the final snap (under the canonical id) and a boolean flag if a migration happened.
- */
+*/
 async function migrateIfDashed(
   db: FirebaseFirestore.Firestore,
   codeCanonical: string
@@ -39,7 +40,7 @@ async function migrateIfDashed(
 
 /**
  * GET /api/register?code=NBK1
- */
+*/
 export async function GET(req: NextRequest) {
   const db = getDb();
   try {
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
           (existing as any).code = code;
         }
       } else {
-        // (optional) also try raw dashed lookup as last resort read (no migration)
+        // (optional) last-resort read under dashed id (no migration)
         const dashed = toDashed(code);
         const oldSnap = await db.collection("workers").doc(dashed).get();
         if (oldSnap.exists) {
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
  * - Accepts NBK1 / NBK001 (no dash). Stores as NBK0001.
  * - Derives project from prefix.
  * - Also migrates any dashed doc to the canonical id.
- */
+*/
 export async function POST(req: NextRequest) {
   const db = getDb();
   try {
