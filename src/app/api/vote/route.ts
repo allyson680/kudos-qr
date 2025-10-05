@@ -1,4 +1,4 @@
-// src/app/api/vote/route.ts
+// /src/app/api/vote/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -20,7 +20,7 @@ const BodySchema = z.object({
   voteType: z.enum(["token", "goodCatch"]).optional().default("token"),
 });
 
-/** Key helpers (UTC window) */
+/** Keys (UTC day/month) */
 function dayKeyUTC(d = new Date()) {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
@@ -33,32 +33,31 @@ function monthKeyUTC(d = new Date()) {
   return `${y}-${m}`;
 }
 
-/** Simple notification write (now receives db) */
+/** Safe optional notification */
 async function createNotification(
   db: FirebaseFirestore.Firestore,
-  params: {
-    targetCode: string;
-    voteType: "token" | "goodCatch";
-    voterCode: string;
-  }
+  params: { targetCode: string; voteType: "token" | "goodCatch"; voterCode: string }
 ) {
-  const { targetCode, voteType, voterCode } = params;
-  const title =
-    voteType === "goodCatch" ? "You received a Good Catch!" : "You received a Token!";
-  const body =
-    voteType === "goodCatch"
-      ? `Someone recognized your Good Catch.`
-      : `Someone gave you a virtual token.`;
-
-  await db.collection("notifications").add({
-    targetCode,
-    voterCode,
-    voteType,
-    title,
-    body,
-    read: false,
-    createdAt: FieldValue.serverTimestamp(),
-  });
+  try {
+    const { targetCode, voteType, voterCode } = params;
+    const title =
+      voteType === "goodCatch" ? "You received a Good Catch Token!" : "You received a Virtual Token!";
+    const body =
+      voteType === "goodCatch"
+        ? "Someone recognized your Good Catch."
+        : "Someone gave you a virtual token.";
+    await db.collection("notifications").add({
+      targetCode,
+      voterCode,
+      voteType,
+      title,
+      body,
+      read: false,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+  } catch {
+    // non-blocking
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -71,7 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Invalid body" }, { status: 400 });
     }
 
-    // Normalize codes
+    // Normalize
     const voterCodeNorm = normalizeSticker(parsed.data.voterCode);
     const targetCodeNorm = normalizeSticker(parsed.data.targetCode);
     const voteType = parsed.data.voteType;
@@ -83,7 +82,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "No self voting" }, { status: 400 });
     }
 
-    // Load voter / target with dashed fallback
+    // Load voter/target w/ dashed fallback
     const voterRef = db.collection("workers").doc(voterCodeNorm);
     const targetRef = db.collection("workers").doc(targetCodeNorm);
 
@@ -111,10 +110,7 @@ export async function POST(req: NextRequest) {
 
     // No same-company voting
     if (voter.companyId === target.companyId) {
-      return NextResponse.json(
-        { ok: false, error: "No same-company voting" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No same-company voting" }, { status: 400 });
     }
 
     // Same-project only
@@ -136,7 +132,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Counters (NOTE: company monthly is for the VOTER's company budget)
+    // Counters are for token votes
     const now = new Date();
     const dayKey = dayKeyUTC(now);
     const monthKey = monthKeyUTC(now);
@@ -151,7 +147,7 @@ export async function POST(req: NextRequest) {
 
     const voteRef = db.collection("votes").doc();
 
-    // Pre-read counts once (used for GC response & token baseline)
+    // Pre-read current counters (for UI message)
     const [vdSnapPre, cmSnapPre] = await Promise.all([
       voterDailyRef.get(),
       companyMonthlyRef.get(),
@@ -159,7 +155,7 @@ export async function POST(req: NextRequest) {
     const currDaily = vdSnapPre.exists ? ((vdSnapPre.data() as any).count || 0) : 0;
     const currMonthly = cmSnapPre.exists ? ((cmSnapPre.data() as any).count || 0) : 0;
 
-    // ---------- GOOD CATCH (does NOT consume limits) ----------
+    // ---------- GOOD CATCH (no counters) ----------
     if (voteType === "goodCatch") {
       await db.runTransaction(async (tx) => {
         tx.set(voteRef, {
@@ -167,9 +163,7 @@ export async function POST(req: NextRequest) {
           targetCode: targetCodeNorm,
           voterCompanyId: voter.companyId,
           targetCompanyId: target.companyId,
-          // 👇 add these so Admin Summary works
-          companyId: voter.companyId,
-          project: voterProject,
+          project: voterProject, // include project for reporting
           voteType: "goodCatch",
           createdAt: FieldValue.serverTimestamp(),
           dayKey,
@@ -178,13 +172,8 @@ export async function POST(req: NextRequest) {
       });
 
       const displayName = (target.fullName || "").trim();
-      const niceTarget = { code: targetCodeNorm, fullName: displayName };
-
       const dailyRemaining = Math.max(0, DAILY_MAX_PER_VOTER - currDaily);
-      const companyMonthlyRemaining = Math.max(
-        0,
-        MONTHLY_MAX_PER_COMPANY - currMonthly
-      );
+      const companyMonthlyRemaining = Math.max(0, MONTHLY_MAX_PER_COMPANY - currMonthly);
 
       await createNotification(db, {
         targetCode: targetCodeNorm,
@@ -192,22 +181,20 @@ export async function POST(req: NextRequest) {
         voterCode: voterCodeNorm,
       });
 
-      const message =
-        `Good Catch for ${displayName || targetCodeNorm} (${targetCodeNorm}) recorded. ` +
-        `Good Catches don’t count against daily or monthly token limits. ` +
-        `You still have ${dailyRemaining} token${dailyRemaining === 1 ? "" : "s"} left today. ` +
-        `Your company still has ${companyMonthlyRemaining} token${
-          companyMonthlyRemaining === 1 ? "" : "s"
-        } left this month.`;
-
       return NextResponse.json({
         ok: true,
         voteType: "goodCatch",
-        message,
-        target: niceTarget,
+        message:
+          `Good Catch for ${displayName || targetCodeNorm} (${targetCodeNorm}) recorded. ` +
+          `Good Catches don’t count against daily or monthly token limits. ` +
+          `You still have ${dailyRemaining} token${dailyRemaining === 1 ? "" : "s"} left today. ` +
+          `Your company still has ${companyMonthlyRemaining} token${
+            companyMonthlyRemaining === 1 ? "" : "s"
+          } left this month.`,
+        target: { code: targetCodeNorm, fullName: displayName },
         dailyRemaining,
         companyMonthlyRemaining,
-        companyRemaining: companyMonthlyRemaining, // alias for FE
+        companyRemaining: companyMonthlyRemaining,
       });
     }
 
@@ -216,15 +203,10 @@ export async function POST(req: NextRequest) {
     let companyMonthlyRemaining = 0;
 
     await db.runTransaction(async (tx) => {
-      const [vdSnap, cmSnap] = await Promise.all([
-        tx.get(voterDailyRef),
-        tx.get(companyMonthlyRef),
-      ]);
+      const [vdSnap, cmSnap] = await Promise.all([tx.get(voterDailyRef), tx.get(companyMonthlyRef)]);
 
       const voterDailyCount = vdSnap.exists ? ((vdSnap.data() as any).count || 0) : 0;
-      const companyMonthlyCount = cmSnap.exists
-        ? ((cmSnap.data() as any).count || 0)
-        : 0;
+      const companyMonthlyCount = cmSnap.exists ? ((cmSnap.data() as any).count || 0) : 0;
 
       if (voterDailyCount >= DAILY_MAX_PER_VOTER) {
         throw new Error("Daily limit reached");
@@ -233,14 +215,12 @@ export async function POST(req: NextRequest) {
         throw new Error("Company monthly limit reached");
       }
 
-      // Record the vote
+      // Record the vote with project for reporting
       tx.set(voteRef, {
         voterCode: voterCodeNorm,
         targetCode: targetCodeNorm,
         voterCompanyId: voter.companyId,
         targetCompanyId: target.companyId,
-        // 👇 add fields needed by admin reports
-        companyId: voter.companyId,
         project: voterProject,
         voteType: "token",
         createdAt: FieldValue.serverTimestamp(),
@@ -273,16 +253,11 @@ export async function POST(req: NextRequest) {
         { merge: true }
       );
 
-      // Remaining AFTER this write
       dailyRemaining = Math.max(0, DAILY_MAX_PER_VOTER - (voterDailyCount + 1));
-      companyMonthlyRemaining = Math.max(
-        0,
-        MONTHLY_MAX_PER_COMPANY - (companyMonthlyCount + 1)
-      );
+      companyMonthlyRemaining = Math.max(0, MONTHLY_MAX_PER_COMPANY - (companyMonthlyCount + 1));
     });
 
     const displayName = (target.fullName || "").trim();
-    const niceTarget = { code: targetCodeNorm, fullName: displayName };
 
     await createNotification(db, {
       targetCode: targetCodeNorm,
@@ -290,21 +265,19 @@ export async function POST(req: NextRequest) {
       voterCode: voterCodeNorm,
     });
 
-    const message =
-      `Your virtual token has been given to ${displayName || targetCodeNorm} (${targetCodeNorm}). ` +
-      `You have ${dailyRemaining} token${dailyRemaining === 1 ? "" : "s"} left today. ` +
-      `Your company has ${companyMonthlyRemaining} token${
-        companyMonthlyRemaining === 1 ? "" : "s"
-      } left this month.`;
-
     return NextResponse.json({
       ok: true,
       voteType: "token",
-      message,
-      target: niceTarget,
+      message:
+        `Your virtual token has been given to ${displayName || targetCodeNorm} (${targetCodeNorm}). ` +
+        `You have ${dailyRemaining} token${dailyRemaining === 1 ? "" : "s"} left today. ` +
+        `Your company has ${companyMonthlyRemaining} token${
+          companyMonthlyRemaining === 1 ? "" : "s"
+        } left this month.`,
+      target: { code: targetCodeNorm, fullName: displayName },
       dailyRemaining,
       companyMonthlyRemaining,
-      companyRemaining: companyMonthlyRemaining, // alias for FE
+      companyRemaining: companyMonthlyRemaining,
     });
   } catch (e: any) {
     const msg = String(e?.message || "");
@@ -316,12 +289,7 @@ export async function POST(req: NextRequest) {
     }
     if (/company monthly limit/i.test(msg)) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Company monthly limit reached",
-          companyMonthlyRemaining: 0,
-          companyRemaining: 0,
-        },
+        { ok: false, error: "Company monthly limit reached", companyMonthlyRemaining: 0, companyRemaining: 0 },
         { status: 400 }
       );
     }

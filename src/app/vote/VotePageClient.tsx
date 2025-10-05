@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
@@ -34,8 +33,7 @@ function extractStickerFromText(raw: string): string | null {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
-    if (kIdx !== -1 && parts[kIdx + 1])
-      return normalizeSticker(parts[kIdx + 1]);
+    if (kIdx !== -1 && parts[kIdx + 1]) return normalizeSticker(parts[kIdx + 1]);
 
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
     if (qp) return normalizeSticker(qp);
@@ -47,11 +45,32 @@ function extractStickerFromText(raw: string): string | null {
   return normalizeSticker(t);
 }
 
+/** Ignore bare prefixes so "NBK" / "JP" (and dashed) don't explode the list */
+function isGenericCodePrefix(str: string) {
+  const t = (str || "").trim().toUpperCase();
+  return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
+}
+
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
 
-  // ⬇️ used for auto-scroll to results
+  const topRef = useRef<HTMLDivElement | null>(null);
+  const [selfCallout, setSelfCallout] = useState<string>("");
+
+  const showNoSelf = useCallback(() => {
+    setSelfCallout(
+      "Nice try! You can’t give a token to yourself! Please choose your wonderful deserving coworker."
+    );
+    // bring it into view
+    try {
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  // used for auto-scroll to results
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
@@ -106,8 +125,13 @@ export default function VotePageClient() {
     const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
       cache: "no-store",
     });
-    const json = await res.json();
-    return json?.existing ?? null;
+    try {
+      const json = await res.json();
+      return json?.existing ?? null;
+    } catch {
+      // If server ever returns non-JSON (e.g. an HTML error page), avoid a crash.
+      return null;
+    }
   }
 
   async function checkLimits(voter: string, companyId?: string) {
@@ -180,6 +204,12 @@ export default function VotePageClient() {
       const code = extractStickerFromText(raw);
       if (!code) return;
 
+      // no self voting (client)
+      if (code === voterCode) {
+        showNoSelf();
+        return;
+      }
+
       if (getProjectFromCode(code) !== voterProject) {
         setMsg("Same-project only (NBK→NBK, JP→JP)");
         return;
@@ -198,7 +228,7 @@ export default function VotePageClient() {
       setScanOpen(false);
       setStep("confirm");
     },
-    [voterProject]
+    [voterProject, voterCode, showNoSelf]
   );
 
   async function submitVote() {
@@ -244,6 +274,15 @@ export default function VotePageClient() {
         setScanOpen(false);
       } else {
         const err = (json.error || "").toLowerCase();
+
+        // self voting from server -> big callout + return to target step
+        if (err.includes("self")) {
+          showNoSelf();
+          setStep("target");
+          setScanOpen(false);
+          return;
+        }
+
         if (err.includes("company")) {
           lockOut("company");
           return;
@@ -301,12 +340,18 @@ export default function VotePageClient() {
     })();
   }, [voterFromQS, router]);
 
-  // Search workers (target step only)
+  // Search workers (target step only) — with NBK/JP prefix guard
   useEffect(() => {
     if (step !== "target") return;
 
-    if (!filterCompanyId && !query.trim()) {
+    const q = (query || "").trim();
+    const qLen = q.length;
+    const tooBroad = isGenericCodePrefix(q);
+
+    // If no company filter and query is too short or just NBK/JP, don't fetch.
+    if (!filterCompanyId && (qLen < 3 || tooBroad)) {
       setResults([]);
+      setIsSearching(false);
       return;
     }
 
@@ -316,7 +361,7 @@ export default function VotePageClient() {
         setIsSearching(true);
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
-        if (query.trim()) params.set("q", query.trim());
+        if (q) params.set("q", q); // ok if only 1–2 chars when a company is selected
         const r = await fetch(`/api/admin/workers?${params.toString()}`, {
           cache: "no-store",
         });
@@ -334,7 +379,7 @@ export default function VotePageClient() {
     };
   }, [step, filterCompanyId, query, voterProject]);
 
-  // ⬇️ AUTO-SCROLL EFFECT — scroll to results after filtering/searching
+  // AUTO-SCROLL EFFECT — scroll to results after filtering/searching
   useEffect(() => {
     if (step !== "target") return;
     if (isSearching) return; // wait until fetch finishes
@@ -377,13 +422,17 @@ export default function VotePageClient() {
           setMsg("Same-project only (NBK→NBK, JP→JP)");
           return;
         }
+        if (w.code === voterCode) {
+          showNoSelf();
+          return;
+        }
         setTargetCode(w.code);
         setTargetName(w.fullName || "");
         setScanOpen(false);
         setStep("confirm");
       }
     },
-    [query, results, setTarget, voterProject]
+    [query, results, setTarget, voterProject, voterCode, showNoSelf]
   );
 
   if (dailyLocked) {
@@ -415,6 +464,24 @@ export default function VotePageClient() {
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-center">Vote</h1>
+      <div ref={topRef} />
+      {selfCallout && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-500/40 bg-red-700/30 text-red-100 p-3 flex items-start justify-between"
+        >
+          <div className="pr-3">
+            <div className="font-semibold">No self voting!</div>
+            <div className="text-sm opacity-90">{selfCallout}</div>
+          </div>
+          <button
+            className="text-xs underline text-red-100/90"
+            onClick={() => setSelfCallout("")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* STEP 1 — voter */}
       {step === "voter" && (
@@ -425,10 +492,7 @@ export default function VotePageClient() {
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3]">
-              <QrScanner
-                onScan={onVoterScan}
-                onError={(e) => setMsg(e.message)}
-              />
+              <QrScanner onScan={onVoterScan} onError={(e) => setMsg(e.message)} />
             </div>
           </div>
 
@@ -520,9 +584,8 @@ export default function VotePageClient() {
 
           {/* Combined Search + Company filter */}
           <div className="rounded border p-3 space-y-2">
-            {/* ⬅️ Instruction moved to top */}
             <p className="text-xs text-gray-300">
-              Search by name or code - or filter by company.
+              Search by name or code - or - filter by company.
             </p>
 
             <form onSubmit={handleSearchSubmit} className="space-y-2">
@@ -574,6 +637,10 @@ export default function VotePageClient() {
                             setMsg("Same-project only (NBK→NBK, JP→JP)");
                             return;
                           }
+                          if (w.code === voterCode) {
+                            showNoSelf();
+                            return;
+                          }
                           setTargetCode(w.code);
                           setTargetName(w.fullName || "");
                           setScanOpen(false);
@@ -588,6 +655,13 @@ export default function VotePageClient() {
               ) : filterCompanyId || query.trim() ? (
                 <p className="text-sm text-gray-500">No matches found.</p>
               ) : null}
+
+              {/* Optional hint if user typed only NBK/JP */}
+              {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Too broad — add a few letters of a name or digits after NBK/JP (e.g. NBK12).
+                </p>
+              )}
             </div>
           </div>
 
