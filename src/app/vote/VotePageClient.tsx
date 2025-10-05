@@ -51,18 +51,42 @@ function isGenericCodePrefix(str: string) {
   return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
 }
 
+/** Safe JSON reader to prevent client crashes on HTML/plain errors */
+async function readJsonSafe(res: Response) {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const t = await res.text();
+    return { ok: false, error: t?.slice(0, 200) || "Request failed" };
+  } catch {
+    return { ok: false, error: "Request failed" };
+  }
+}
+
+function includesAny(haystack: string, needles: string[]) {
+  const h = haystack.toLowerCase();
+  return needles.some((n) => h.includes(n.toLowerCase()));
+}
+
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
 
   const topRef = useRef<HTMLDivElement | null>(null);
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+
   const [selfCallout, setSelfCallout] = useState<string>("");
 
   const showNoSelf = useCallback(() => {
     setSelfCallout(
       "Nice try! You can’t give a token to yourself! Please choose your wonderful deserving coworker."
     );
-    // bring it into view
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
@@ -70,13 +94,10 @@ export default function VotePageClient() {
     }
   }, []);
 
-  // used for auto-scroll to results
-  const resultsRef = useRef<HTMLDivElement | null>(null);
-
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (
-    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
-  ) as "token" | "goodCatch";
+  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
+    | "token"
+    | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -113,55 +134,86 @@ export default function VotePageClient() {
   const [lockMsg, setLockMsg] = useState("");
 
   const lockOut = (kind: LockKind = "daily") => {
+    const fallback =
+      kind === "company"
+        ? "You’ve hit your company’s monthly token cap for now. Please try again later."
+        : "You’ve given all your tokens for today. Come back tomorrow.";
     setDailyLocked(true);
     setLockMsg(
-      kind === "company"
+      (kind === "company"
         ? getNextCompanyCapMessage()
-        : getNextOutOfTokensMessage()
+        : getNextOutOfTokensMessage()) || fallback
     );
   };
 
   async function apiLookup(code: string): Promise<Worker | null> {
-    const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
-      cache: "no-store",
-    });
     try {
-      const json = await res.json();
-      return json?.existing ?? null;
+      const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
+        cache: "no-store",
+      });
+      const json = await readJsonSafe(res);
+      if (json && typeof json === "object" && (json as any).existing) {
+        return (json as any).existing as Worker;
+      }
+      return null;
     } catch {
-      // If server ever returns non-JSON (e.g. an HTML error page), avoid a crash.
       return null;
     }
   }
 
+  // Hardened limits checker (handles numeric hints & text hints)
   async function checkLimits(voter: string, companyId?: string) {
     try {
       const params = new URLSearchParams({ voter });
       if (companyId) params.set("companyId", companyId);
+
       const r = await fetch(`/api/vote/limits?${params.toString()}`, {
         cache: "no-store",
       });
-      const j = await r.json();
-      if (j?.ok) {
-        if (typeof j.companyRemaining === "number" && j.companyRemaining <= 0) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof j.companyMonthlyRemaining === "number" &&
-          j.companyMonthlyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
-        if (typeof j.dailyRemaining === "number" && j.dailyRemaining <= 0) {
-          lockOut("daily");
-          return;
-        }
+      const j = await readJsonSafe(r);
+
+      if (!j || typeof j !== "object") {
         setDailyLocked(false);
-      } else {
-        setDailyLocked(false);
+        return;
       }
+
+      const dailyRem =
+        typeof (j as any).dailyRemaining === "number"
+          ? (j as any).dailyRemaining
+          : null;
+      const companyRem =
+        typeof (j as any).companyRemaining === "number"
+          ? (j as any).companyRemaining
+          : null;
+      const companyMonthlyRem =
+        typeof (j as any).companyMonthlyRemaining === "number"
+          ? (j as any).companyMonthlyRemaining
+          : null;
+
+      if (companyRem !== null && companyRem <= 0) {
+        lockOut("company");
+        return;
+      }
+      if (companyMonthlyRem !== null && companyMonthlyRem <= 0) {
+        lockOut("company");
+        return;
+      }
+      if (dailyRem !== null && dailyRem <= 0) {
+        lockOut("daily");
+        return;
+      }
+
+      const msgTxt = String((j as any).message || (j as any).error || "");
+      if (includesAny(msgTxt, ["company", "monthly", "cap"])) {
+        lockOut("company");
+        return;
+      }
+      if (includesAny(msgTxt, ["daily"])) {
+        lockOut("daily");
+        return;
+      }
+
+      setDailyLocked(false);
     } catch {
       setDailyLocked(false);
     }
@@ -182,7 +234,6 @@ export default function VotePageClient() {
         setVoterCompanyId("");
         setScanOpen(false);
         setMsg("We didn’t find your code. Redirecting to register…");
-        // send them to the registration page for their sticker
         setTimeout(() => router.push(`/k/${code}`), 300);
         return;
       }
@@ -192,7 +243,7 @@ export default function VotePageClient() {
       await checkLimits(code);
 
       setStep("target");
-      setScanOpen(false); // keep overlay until they tap to scan
+      setScanOpen(false);
     },
     [router]
   );
@@ -204,7 +255,6 @@ export default function VotePageClient() {
       const code = extractStickerFromText(raw);
       if (!code) return;
 
-      // no self voting (client)
       if (code === voterCode) {
         showNoSelf();
         return;
@@ -231,6 +281,7 @@ export default function VotePageClient() {
     [voterProject, voterCode, showNoSelf]
   );
 
+  // Hardened submit with safe parsing & robust limit detection
   async function submitVote() {
     setMsg("");
     try {
@@ -242,59 +293,81 @@ export default function VotePageClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const json = await readJsonSafe(res);
 
-      if (json.ok) {
-        if (
-          typeof json.companyRemaining === "number" &&
-          json.companyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof json.companyMonthlyRemaining === "number" &&
-          json.companyMonthlyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
-        if (
-          typeof json.dailyRemaining === "number" &&
-          json.dailyRemaining <= 0
-        ) {
-          lockOut("daily");
-          return;
-        }
-
-        const code = json.target?.code || targetCode;
-        const name = (json.target?.fullName || targetName || "").trim();
-        setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
-        setStep("done");
-        setScanOpen(false);
-      } else {
-        const err = (json.error || "").toLowerCase();
-
-        // self voting from server -> big callout + return to target step
-        if (err.includes("self")) {
-          showNoSelf();
-          setStep("target");
-          setScanOpen(false);
-          return;
-        }
-
-        if (err.includes("company")) {
-          lockOut("company");
-          return;
-        }
-        if (err.includes("daily")) {
-          lockOut("daily");
-          return;
-        }
-        setMsg(json.error || "Error");
+      if (!json || typeof json !== "object") {
+        setMsg("Vote failed. Please try again.");
         setStep("target");
         setScanOpen(false);
+        return;
       }
+
+      if ((json as any).ok) {
+        const dailyRemaining = (json as any).dailyRemaining;
+        const companyRemaining =
+          (json as any).companyRemaining ??
+          (json as any).companyMonthlyRemaining;
+
+        if (typeof companyRemaining === "number" && companyRemaining <= 0) {
+          lockOut("company");
+          return;
+        }
+        if (typeof dailyRemaining === "number" && dailyRemaining <= 0) {
+          lockOut("daily");
+          return;
+        }
+
+        const code = (json as any).target?.code || targetCode;
+        const name = ((json as any).target?.fullName || targetName || "").trim();
+        setMsg((json as any).message || `Vote for ${name || code} (${code}) recorded`);
+        setStep("done");
+        setScanOpen(false);
+        return;
+      }
+
+      const errMsg = String((json as any).error || (json as any).message || "");
+
+      if (includesAny(errMsg, ["self"])) {
+        showNoSelf();
+        setStep("target");
+        setScanOpen(false);
+        return;
+      }
+      if (includesAny(errMsg, ["company", "monthly", "cap"])) {
+        lockOut("company");
+        return;
+      }
+      if (includesAny(errMsg, ["daily"])) {
+        lockOut("daily");
+        return;
+      }
+
+      // Numeric hints on error
+      if (
+        typeof (json as any).companyRemaining === "number" &&
+        (json as any).companyRemaining <= 0
+      ) {
+        lockOut("company");
+        return;
+      }
+      if (
+        typeof (json as any).companyMonthlyRemaining === "number" &&
+        (json as any).companyMonthlyRemaining <= 0
+      ) {
+        lockOut("company");
+        return;
+      }
+      if (
+        typeof (json as any).dailyRemaining === "number" &&
+        (json as any).dailyRemaining <= 0
+      ) {
+        lockOut("daily");
+        return;
+      }
+
+      setMsg(errMsg || "Vote failed");
+      setStep("target");
+      setScanOpen(false);
     } catch (e: any) {
       setMsg(e?.message || "Network error");
       setStep("target");
@@ -318,18 +391,22 @@ export default function VotePageClient() {
     (async () => {
       try {
         const res = await fetch("/api/register", { cache: "no-store" });
-        const json = await res.json();
-        setCompanies(Array.isArray(json.companies) ? json.companies : []);
+        const json = await readJsonSafe(res);
+        const list =
+          json && typeof json === "object" && Array.isArray((json as any).companies)
+            ? ((json as any).companies as Company[])
+            : [];
+        setCompanies(list);
       } catch {}
     })();
   }, [step]);
 
+  // Handle /vote?voter=... prefill/redirect
   useEffect(() => {
     if (!voterFromQS) return;
     (async () => {
       const w = await apiLookup(voterFromQS);
       if (!w) {
-        // if someone opens /vote?voter=NBK1 and NBK1 isn't registered, send them to /k/NBK0001
         router.replace(`/k/${voterFromQS}`);
         return;
       }
@@ -348,7 +425,6 @@ export default function VotePageClient() {
     const qLen = q.length;
     const tooBroad = isGenericCodePrefix(q);
 
-    // If no company filter and query is too short or just NBK/JP, don't fetch.
     if (!filterCompanyId && (qLen < 3 || tooBroad)) {
       setResults([]);
       setIsSearching(false);
@@ -361,12 +437,16 @@ export default function VotePageClient() {
         setIsSearching(true);
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
-        if (q) params.set("q", q); // ok if only 1–2 chars when a company is selected
+        if (q) params.set("q", q);
         const r = await fetch(`/api/admin/workers?${params.toString()}`, {
           cache: "no-store",
         });
-        const j = await r.json();
-        if (!cancelled) setResults(Array.isArray(j.workers) ? j.workers : []);
+        const j = await readJsonSafe(r);
+        const list =
+          j && typeof j === "object" && Array.isArray((j as any).workers)
+            ? ((j as any).workers as Worker[])
+            : [];
+        if (!cancelled) setResults(list);
       } catch {
         if (!cancelled) setResults([]);
       } finally {
@@ -382,25 +462,19 @@ export default function VotePageClient() {
   // AUTO-SCROLL EFFECT — scroll to results after filtering/searching
   useEffect(() => {
     if (step !== "target") return;
-    if (isSearching) return; // wait until fetch finishes
+    if (isSearching) return;
     if (!resultsRef.current) return;
 
     const minChars = 3;
     const hasFilter = !!filterCompanyId;
     const hasLongEnoughQuery = query.trim().length >= minChars;
 
-    // Only scroll if a filter is chosen OR the query is at least 3 chars
     if (!hasFilter && !hasLongEnoughQuery) return;
-
-    // Also don’t scroll if nothing came back
     if (!results || results.length === 0) return;
 
     const y =
       resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
-
     window.scrollTo({ top: y, behavior: "smooth" });
-
-    // Hide the mobile keyboard after filtering/searching
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [step, filterCompanyId, query, isSearching, results.length]);
 
@@ -465,6 +539,7 @@ export default function VotePageClient() {
     <main className="p-4 max-w-md mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-center">Vote</h1>
       <div ref={topRef} />
+
       {selfCallout && (
         <div
           role="alert"
@@ -571,7 +646,7 @@ export default function VotePageClient() {
               )}
               {scanOpen && (
                 <QrScanner
-                  key={`scanner-${step}-${scanOpen}`} // force clean remount
+                  key={`scanner-${step}-${scanOpen}`}
                   onScan={onTargetScan}
                   onError={(e) => {
                     setMsg(e.message);
@@ -613,7 +688,7 @@ export default function VotePageClient() {
               </select>
             </form>
 
-            {/* Results (kept under a ref for auto-scroll) */}
+            {/* Results */}
             <div ref={resultsRef}>
               {isSearching ? (
                 <p className="text-sm text-gray-500">Searching…</p>
@@ -656,10 +731,10 @@ export default function VotePageClient() {
                 <p className="text-sm text-gray-500">No matches found.</p>
               ) : null}
 
-              {/* Optional hint if user typed only NBK/JP */}
               {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
                 <p className="text-sm text-gray-500 mt-2">
-                  Too broad — add a few letters of a name or digits after NBK/JP (e.g. NBK12).
+                  Too broad — add a few letters of a name or digits after
+                  NBK/JP (e.g. NBK12).
                 </p>
               )}
             </div>
@@ -675,8 +750,7 @@ export default function VotePageClient() {
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
               Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
-              ?
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>
             <div className="mt-3 flex justify-center">
               <TypeBadge type={voteType} />

@@ -1,85 +1,96 @@
 "use client";
-
 import React from "react";
 
-type TokenType = "token" | "goodCatch";
-type Size = "sm" | "md" | "lg";
+type Props = {
+  type: "token" | "goodCatch";
+  size?: "md" | "lg";
+  interactive?: boolean;   // tap/clickable
+  selected?: boolean;      // draw a thicker ring + larger scale
+  onClick?: () => void;    // handler when interactive
+};
 
 export default function TypeBadge({
   type,
-  size = "md",
+  size = "lg",
   interactive = false,
   selected = false,
   onClick,
-}: {
-  type: TokenType;
-  size?: Size;
-  interactive?: boolean;
-  selected?: boolean;
-  onClick?: () => void;
-}) {
-  const sizeClasses =
+}: Props) {
+  const isToken = type === "token";
+
+  const dims =
     size === "lg"
-      ? "w-20 h-20 text-base"      // 80px
-      : size === "sm"
-      ? "w-10 h-10 text-[11px]"    // 40px
-      : "w-14 h-14 text-sm";       // 56px (default md)
+      ? "w-32 h-32 md:w-36 md:h-36"
+      : "w-24 h-24";
 
-  const base =
-    "relative rounded-full flex items-center justify-center font-semibold select-none";
+  // Keep your colors
+  const bg = isToken
+    ? "bg-gradient-to-b from-green-500 to-green-700 text-white"
+    : "bg-gradient-to-b from-amber-300 to-yellow-500 text-emerald-800";
 
-  // Distinct looks for the two badge types
-  const fill =
-    type === "token"
-      ? // “gold coin” look
-        "bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 " +
-        "shadow-lg shadow-amber-500/30 border border-amber-300/60"
-      : // “good catch” look
-        "bg-gradient-to-br from-emerald-300 via-cyan-400 to-sky-500 " +
-        "shadow-lg shadow-cyan-500/30 border border-cyan-300/60";
+  // Bigger ring & scale when selected
+  const ring = selected ? "ring-4 ring-black/25" : "ring-2 ring-black/10";
+  const scaleSelected = selected ? "scale-110" : ""; // noticeable bump when picked
 
-  // Selection ring + scale “pop”
-  const selectedRing =
-    type === "token"
-      ? "ring-4 ring-yellow-400/60"
-      : "ring-4 ring-cyan-300/60";
-
-  const behavior = [
-    "transition-transform duration-200 ease-out",
-    selected ? "scale-125" : "scale-100", // <— bigger when selected
-    interactive ? "cursor-pointer active:scale-95 focus:outline-none" : "",
-  ].join(" ");
-
-  // Optional label text
-  const label = type === "token" ? "Token" : "Good Catch";
+  // Subtle grow on hover/tap when interactive
+  const hover = interactive
+    ? "cursor-pointer hover:scale-105 active:scale-95"
+    : "";
 
   return (
     <button
       type="button"
-      aria-pressed={selected}
-      aria-label={label}
-      onClick={onClick}
+      aria-label={isToken ? "Token of Excellence" : "Good Catch"}
+      aria-pressed={interactive ? selected : undefined}
+      onClick={interactive ? onClick : undefined}
       className={[
-        base,
-        sizeClasses,
-        fill,
-        behavior,
-        selected ? selectedRing : "ring-0",
-        // Shimmer overlay (defined in globals.css); only on token
-        type === "token" ? "token-shimmer" : "",
+        "relative", dims,
+        "flex items-center justify-center rounded-full",
+        "font-extrabold text-center shadow-lg select-none token-shimmer",
+        // smooth animation
+        "transition-transform duration-200 ease-out",
+        bg, ring, hover, scaleSelected,
       ].join(" ")}
     >
-      {/* Inner bevel to sell the coin look a bit more */}
       <span
         className={[
-          "absolute inset-0 rounded-full pointer-events-none",
-          "bg-white/0",
-          "shadow-inner shadow-black/10",
+          "leading-tight text-xs md:text-sm tracking-wide",
+          isToken ? "text-white" : "text-emerald-800",
+        ].join(" ")}
+      >
+        {isToken ? (
+          <>
+            TOKEN
+            <br />
+            OF
+            <br />
+            EXCELLENCE
+          </>
+        ) : (
+          <>
+            GOOD
+            <br />
+            CATCH
+          </>
+        )}
+      </span>
+
+      {/* subtle inner ring (kept) */}
+      <div className="pointer-events-none absolute inset-[6%] rounded-full ring-2 ring-white/48" />
+
+      {/* soft outer glow (kept; slightly stronger when selected) */}
+      <div
+        className={[
+          "pointer-events-none absolute -inset-1 rounded-full blur-md",
+          selected ? "opacity-40" : "opacity-30",
+          isToken ? "bg-green-500" : "bg-amber-400",
         ].join(" ")}
       />
-      <span className="relative z-10 tracking-wide drop-shadow-sm">
-        {label}
-      </span>
+
+      {/* tiny highlight ring when selected to reinforce */}
+      {selected && (
+        <div className="pointer-events-none absolute inset-0 rounded-full ring-4 ring-white/10" />
+      )}
     </button>
   );
 }
