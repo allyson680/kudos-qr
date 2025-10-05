@@ -432,7 +432,7 @@ export default function ScanVotePage() {
               <p className="text-sm text-neutral-400">No matches found.</p>
             ) : (
               <p className="text-xs text-neutral-500">
-                Tip: filter by company or search a name/code.
+                Search a name/code or filter by company.
               </p>
             )}
           </div>

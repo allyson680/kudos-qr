@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -49,6 +49,9 @@ function extractStickerFromText(raw: string): string | null {
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
+
+  // ⬇️ used for auto-scroll to results
+  const resultsRef = useRef<HTMLDivElement | null>(null);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
   const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
@@ -141,33 +144,34 @@ export default function VotePageClient() {
 
   /** Stable voter setter (prevents scanner reinit thrash) */
   const setVoter = useCallback(
-  async (raw: string) => {
-    setMsg("");
-    const code = extractStickerFromText(raw);
-    if (!code) return;
+    async (raw: string) => {
+      setMsg("");
+      const code = extractStickerFromText(raw);
+      if (!code) return;
 
-    setVoterCode(code);
-    const w = await apiLookup(code);
+      setVoterCode(code);
+      const w = await apiLookup(code);
 
-    if (!w) {
-      setVoterName("");
-      setVoterCompanyId("");
-      setScanOpen(false);
-      setMsg("We didn’t find your code. Redirecting to register…");
-      // send them to the registration page for their sticker
-      setTimeout(() => router.push(`/k/${code}`), 300);
-      return;
-    }
+      if (!w) {
+        setVoterName("");
+        setVoterCompanyId("");
+        setScanOpen(false);
+        setMsg("We didn’t find your code. Redirecting to register…");
+        // send them to the registration page for their sticker
+        setTimeout(() => router.push(`/k/${code}`), 300);
+        return;
+      }
 
-    setVoterName(w.fullName ?? "");
-    setVoterCompanyId(w.companyId ?? "");
-    await checkLimits(code);
+      setVoterName(w.fullName ?? "");
+      setVoterCompanyId(w.companyId ?? "");
+      await checkLimits(code);
 
-    setStep("target");
-    setScanOpen(false); // keep overlay until they tap to scan
-  },
-  [router]
-);
+      setStep("target");
+      setScanOpen(false); // keep overlay until they tap to scan
+    },
+    [router]
+  );
+
   /** Stable target setter */
   const setTarget = useCallback(
     async (raw: string) => {
@@ -281,21 +285,20 @@ export default function VotePageClient() {
   }, [step]);
 
   useEffect(() => {
-  if (!voterFromQS) return;
-  (async () => {
-    const w = await apiLookup(voterFromQS);
-    if (!w) {
-      // if someone opens /vote?voter=NBK1 and NBK1 isn't registered, send them to /k/NBK0001
-      router.replace(`/k/${voterFromQS}`);
-      return;
-    }
-    setVoterCode(voterFromQS);
-    setVoterName(w.fullName ?? "");
-    setVoterCompanyId(w.companyId ?? "");
-    setStep("target");
-  })();
-}, [voterFromQS, router]);
-
+    if (!voterFromQS) return;
+    (async () => {
+      const w = await apiLookup(voterFromQS);
+      if (!w) {
+        // if someone opens /vote?voter=NBK1 and NBK1 isn't registered, send them to /k/NBK0001
+        router.replace(`/k/${voterFromQS}`);
+        return;
+      }
+      setVoterCode(voterFromQS);
+      setVoterName(w.fullName ?? "");
+      setVoterCompanyId(w.companyId ?? "");
+      setStep("target");
+    })();
+  }, [voterFromQS, router]);
 
   // Search workers (target step only)
   useEffect(() => {
@@ -329,6 +332,22 @@ export default function VotePageClient() {
       cancelled = true;
     };
   }, [step, filterCompanyId, query, voterProject]);
+
+  // ⬇️ AUTO-SCROLL EFFECT — scroll to results after filtering/searching
+  useEffect(() => {
+    if (step !== "target") return;
+    // Only scroll when a filter or search is actually applied
+    if (!filterCompanyId && !query.trim()) return;
+    // Wait until the network search finishes
+    if (isSearching) return;
+    if (!resultsRef.current) return;
+
+    const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    window.scrollTo({ top: y, behavior: "smooth" });
+
+    // Optional: hide the mobile keyboard after changing the filter
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }, [step, filterCompanyId, query, isSearching, results.length]);
 
   // Submit handler for target search
   const handleSearchSubmit = useCallback(
@@ -391,7 +410,7 @@ export default function VotePageClient() {
       {step === "voter" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
-            <p className="text-sm">Scan your sticker, or type it.</p>
+            <p className="text-sm">Scan your QR code, or enter code below.</p>
           </div>
 
           <div className="rounded border overflow-hidden">
@@ -511,48 +530,48 @@ export default function VotePageClient() {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500">
-                Tip: type a code like <code>NBK1</code> and press Go/Enter.
-              </p>
             </form>
 
-            {isSearching ? (
-              <p className="text-sm text-gray-500">Searching…</p>
-            ) : results.length ? (
-              <ul className="divide-y border rounded">
-                {results.map((w) => (
-                  <li key={w.code} className="flex items-center justify-between p-2">
-                    <div>
-                      <div className="font-medium">
-                        {w.fullName || "(no name yet)"}
+            {/* ⬇️ results wrapper gets the ref for auto-scroll */}
+            <div ref={resultsRef}>
+              {isSearching ? (
+                <p className="text-sm text-gray-500">Searching…</p>
+              ) : results.length ? (
+                <ul className="divide-y border rounded">
+                  {results.map((w) => (
+                    <li key={w.code} className="flex items-center justify-between p-2">
+                      <div>
+                        <div className="font-medium">
+                          {w.fullName || "(no name yet)"}
+                        </div>
+                        <div className="text-xs text-gray-600">{w.code}</div>
                       </div>
-                      <div className="text-xs text-gray-600">{w.code}</div>
-                    </div>
-                    <button
-                      className="px-3 py-1 rounded bg-black text-white"
-                      onClick={() => {
-                        if (getProjectFromCode(w.code) !== voterProject) {
-                          setMsg("Same-project only (NBK→NBK, JP→JP)");
-                          return;
-                        }
-                        setTargetCode(w.code);
-                        setTargetName(w.fullName || "");
-                        setScanOpen(false);
-                        setStep("confirm");
-                      }}
-                    >
-                      Select
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : filterCompanyId || query.trim() ? (
-              <p className="text-sm text-gray-500">No matches found.</p>
-            ) : (
-              <p className="text-xs text-gray-500">
-                Tip: filter by company or search a name/code.
-              </p>
-            )}
+                      <button
+                        className="px-3 py-1 rounded bg-black text-white"
+                        onClick={() => {
+                          if (getProjectFromCode(w.code) !== voterProject) {
+                            setMsg("Same-project only (NBK→NBK, JP→JP)");
+                            return;
+                          }
+                          setTargetCode(w.code);
+                          setTargetName(w.fullName || "");
+                          setScanOpen(false);
+                          setStep("confirm");
+                        }}
+                      >
+                        Select
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : filterCompanyId || query.trim() ? (
+                <p className="text-sm text-gray-500">No matches found.</p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Search a name/code or filter by company.
+                </p>
+              )}
+            </div>
           </div>
 
           {msg && <p className="text-sm text-center">{msg}</p>}
