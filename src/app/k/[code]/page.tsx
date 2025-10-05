@@ -540,7 +540,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
             <div className="flex gap-2">
               <input
                 className="flex-1 border rounded p-2"
-                placeholder="Coworker code (e.g., NBK1 / JP001)"
+                placeholder="Coworker code (nbk1 / JP001)"
                 value={targetCode}
                 onChange={(e) => setTargetCode(e.target.value)}
               />
@@ -557,7 +557,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
               <div className="flex flex-col gap-2">
                 <input
                   className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
-                  placeholder="Search by name or code (e.g., Maria, NBK12)"
+                  placeholder="Search by name or code (Sam, nbk1 / JP001)"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />

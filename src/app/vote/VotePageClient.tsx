@@ -428,7 +428,7 @@ export default function VotePageClient() {
           >
             <input
               className="flex-1 border rounded p-2"
-              placeholder="Your code or link (e.g., NBK1 / JP010)"
+              placeholder="Your code (e.g., nbk1 / JP001)"
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
               inputMode="search"
@@ -510,7 +510,7 @@ export default function VotePageClient() {
             <form onSubmit={handleSearchSubmit} className="space-y-2">
               <input
                 className="w-full border rounded p-2"
-                placeholder="Search by name or code (e.g., Maria, NBK12, JP010)"
+                placeholder="Search by name or code (Sam, nbk1 / JP001)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 inputMode="search"

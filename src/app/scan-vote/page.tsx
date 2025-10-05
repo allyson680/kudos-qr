@@ -360,7 +360,7 @@ export default function ScanVotePage() {
             <div className="space-y-2">
               <input
                 className="w-full border rounded p-2 bg-neutral-900 text-white placeholder-gray-400"
-                placeholder="Search by name or code (e.g., Maria, NBK12)"
+                placeholder="Search by name or code (Sam, nbk1 / JP001)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
