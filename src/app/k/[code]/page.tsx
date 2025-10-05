@@ -557,7 +557,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
               <div className="flex flex-col gap-2">
                 <input
                   className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 placeholder:text-neutral-400"
-                  placeholder="Search by name or code (Sam, nbk1 / JP001)"
+                  placeholder="Search name or code (Sam, nbk1 / JP001)"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -618,7 +618,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 <p className="text-sm text-neutral-400">No matches found.</p>
               ) : (
                 <p className="text-xs text-neutral-500">
-                  Tip: filter by company or search a name/code.
+                  Search a name/code or filter by company.
                 </p>
               )}
             </div>

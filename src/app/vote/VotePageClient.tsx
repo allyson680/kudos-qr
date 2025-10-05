@@ -34,7 +34,8 @@ function extractStickerFromText(raw: string): string | null {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
-    if (kIdx !== -1 && parts[kIdx + 1]) return normalizeSticker(parts[kIdx + 1]);
+    if (kIdx !== -1 && parts[kIdx + 1])
+      return normalizeSticker(parts[kIdx + 1]);
 
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
     if (qp) return normalizeSticker(qp);
@@ -54,9 +55,9 @@ export default function VotePageClient() {
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
-    | "token"
-    | "goodCatch";
+  const typeFromQS = (
+    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
+  ) as "token" | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -336,16 +337,25 @@ export default function VotePageClient() {
   // ⬇️ AUTO-SCROLL EFFECT — scroll to results after filtering/searching
   useEffect(() => {
     if (step !== "target") return;
-    // Only scroll when a filter or search is actually applied
-    if (!filterCompanyId && !query.trim()) return;
-    // Wait until the network search finishes
-    if (isSearching) return;
+    if (isSearching) return; // wait until fetch finishes
     if (!resultsRef.current) return;
 
-    const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    const minChars = 3;
+    const hasFilter = !!filterCompanyId;
+    const hasLongEnoughQuery = query.trim().length >= minChars;
+
+    // Only scroll if a filter is chosen OR the query is at least 3 chars
+    if (!hasFilter && !hasLongEnoughQuery) return;
+
+    // Also don’t scroll if nothing came back
+    if (!results || results.length === 0) return;
+
+    const y =
+      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+
     window.scrollTo({ top: y, behavior: "smooth" });
 
-    // Optional: hide the mobile keyboard after changing the filter
+    // Hide the mobile keyboard after filtering/searching
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [step, filterCompanyId, query, isSearching, results.length]);
 
@@ -415,7 +425,10 @@ export default function VotePageClient() {
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3]">
-              <QrScanner onScan={onVoterScan} onError={(e) => setMsg(e.message)} />
+              <QrScanner
+                onScan={onVoterScan}
+                onError={(e) => setMsg(e.message)}
+              />
             </div>
           </div>
 
@@ -447,8 +460,8 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
             <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to give a
-              virtual token to?
+              Hello <b>{voterName || voterCode}</b>, who would you like to give
+              a virtual token to?
             </p>
 
             {isWalsh ? (
@@ -507,10 +520,15 @@ export default function VotePageClient() {
 
           {/* Combined Search + Company filter */}
           <div className="rounded border p-3 space-y-2">
+            {/* ⬅️ Instruction moved to top */}
+            <p className="text-xs text-gray-300">
+              Search by name or code, or filter by company.
+            </p>
+
             <form onSubmit={handleSearchSubmit} className="space-y-2">
               <input
                 className="w-full border rounded p-2"
-                placeholder="Search by name or code (Sam, nbk1 / JP001)"
+                placeholder="Search by name or code (e.g., Maria, NBK12, JP010)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 inputMode="search"
@@ -532,14 +550,17 @@ export default function VotePageClient() {
               </select>
             </form>
 
-            {/* ⬇️ results wrapper gets the ref for auto-scroll */}
+            {/* Results (kept under a ref for auto-scroll) */}
             <div ref={resultsRef}>
               {isSearching ? (
                 <p className="text-sm text-gray-500">Searching…</p>
               ) : results.length ? (
                 <ul className="divide-y border rounded">
                   {results.map((w) => (
-                    <li key={w.code} className="flex items-center justify-between p-2">
+                    <li
+                      key={w.code}
+                      className="flex items-center justify-between p-2"
+                    >
                       <div>
                         <div className="font-medium">
                           {w.fullName || "(no name yet)"}
@@ -566,11 +587,7 @@ export default function VotePageClient() {
                 </ul>
               ) : filterCompanyId || query.trim() ? (
                 <p className="text-sm text-gray-500">No matches found.</p>
-              ) : (
-                <p className="text-xs text-gray-500">
-                  Search a name/code or filter by company.
-                </p>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -584,7 +601,8 @@ export default function VotePageClient() {
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
               Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
+              ?
             </p>
             <div className="mt-3 flex justify-center">
               <TypeBadge type={voteType} />
