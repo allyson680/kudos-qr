@@ -33,7 +33,8 @@ function extractStickerFromText(raw: string): string | null {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
-    if (kIdx !== -1 && parts[kIdx + 1]) return normalizeSticker(parts[kIdx + 1]);
+    if (kIdx !== -1 && parts[kIdx + 1])
+      return normalizeSticker(parts[kIdx + 1]);
 
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
     if (qp) return normalizeSticker(qp);
@@ -80,7 +81,7 @@ export default function VotePageClient() {
   const [selfCallout, setSelfCallout] = useState<string>("");
   const showNoSelf = useCallback(() => {
     setSelfCallout(
-      "Nice try! You can’t give a token to yourself. Please choose your wonderful coworker instead."
+      "You cannot give a token to yourself! Please choose a wonderful deserving coworker instead."
     );
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -90,9 +91,9 @@ export default function VotePageClient() {
   }, []);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
-    | "token"
-    | "goodCatch";
+  const typeFromQS = (
+    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
+  ) as "token" | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -374,7 +375,13 @@ export default function VotePageClient() {
         setIsSearching(true);
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
-        if (q) params.set("q", q); // allow 1–2 chars if company is selected
+        const q = query.trim();
+        if (q) {
+          params.set("q", q);
+        } else if (filterCompanyId === WALSH_COMPANY_ID) {
+          // <— NEW: encourage the API to return WALSH even with empty query
+          params.set("q", "*");
+        }
         const r = await fetch(`/api/admin/workers?${params.toString()}`, {
           cache: "no-store",
         });
@@ -464,12 +471,17 @@ export default function VotePageClient() {
       {step === "voter" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
-            <p className="text-sm">Scan your QR sticker or enter your code below.</p>
+            <p className="text-sm">
+              Scan your QR sticker or enter your code below.
+            </p>
           </div>
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3]">
-              <QrScanner onScan={onVoterScan} onError={(e) => setMsg(e.message)} />
+              <QrScanner
+                onScan={onVoterScan}
+                onError={(e) => setMsg(e.message)}
+              />
             </div>
           </div>
 
@@ -509,7 +521,13 @@ export default function VotePageClient() {
             {isWalsh ? (
               <>
                 <div className="mt-3 flex items-center justify-center gap-6">
-                  <div className={voteType === "token" ? "scale-110 transition-transform" : ""}>
+                  <div
+                    className={
+                      voteType === "token"
+                        ? "scale-110 transition-transform"
+                        : ""
+                    }
+                  >
                     <TypeBadge
                       type="token"
                       size="lg"
@@ -518,7 +536,13 @@ export default function VotePageClient() {
                       onClick={() => setVoteType("token")}
                     />
                   </div>
-                  <div className={voteType === "goodCatch" ? "scale-110 transition-transform" : ""}>
+                  <div
+                    className={
+                      voteType === "goodCatch"
+                        ? "scale-110 transition-transform"
+                        : ""
+                    }
+                  >
                     <TypeBadge
                       type="goodCatch"
                       size="lg"
@@ -593,6 +617,7 @@ export default function VotePageClient() {
                   }
                   setTargetCode(w.code);
                   setTargetName(w.fullName || "");
+                  setSelfCallout("");
                   setScanOpen(false);
                   setStep("confirm");
                 }
@@ -653,6 +678,7 @@ export default function VotePageClient() {
                           }
                           setTargetCode(w.code);
                           setTargetName(w.fullName || "");
+                          setSelfCallout("");
                           setScanOpen(false);
                           setStep("confirm");
                         }}
@@ -667,12 +693,14 @@ export default function VotePageClient() {
               ) : null}
 
               {/* Hint if user typed only NBK/JP */}
-              {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
-                <p className="text-sm text-gray-500 mt-2">
-                  Too broad — please add digits or enter letters to search by name.
-                  (NBK12, Sam).
-                </p>
-              )}
+              {!isSearching &&
+                !filterCompanyId &&
+                isGenericCodePrefix(query) && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    Codes must start with either NBK or JP and followed by
+                    numbers.
+                  </p>
+                )}
             </div>
           </div>
 
@@ -686,7 +714,8 @@ export default function VotePageClient() {
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
               Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
+              ?
             </p>
           </div>
           <div className="flex gap-2">

@@ -20,7 +20,7 @@ export default function TypeBadge({
 
   const dims =
     size === "lg"
-      ? "w-32 h-32 md:w-36 md:h-36"
+      ? "w-32 h-32 md:w-40 md:h-40"
       : "w-24 h-24";
 
   // Keep your colors
@@ -39,7 +39,7 @@ export default function TypeBadge({
   });
 
   // Faster & brighter when selected
-  const duration = selected ? "1.5s" : "2.2s";
+  const duration = selected ? "5.5s" : "3.2s";
   const peak     = selected ? 0.5 : 0.35;
 
   const style = {

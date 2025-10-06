@@ -456,7 +456,6 @@ export default function CodePage({ params }: { params: { code: string } }) {
             >
               Continue
             </button>
-            setVoteType("token"); // default after registering
           </>
         )}
 
