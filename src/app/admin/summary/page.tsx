@@ -1,28 +1,33 @@
 // src/app/admin/summary/page.tsx
 "use client";
 
+"use client";
+
 import { useEffect, useState } from "react";
 
 type TodayRow = {
-  time: string;                  // ISO string from API
-  project: string;               // "NBK" | "JP"
+  time: string; // ISO string from API
+  project: string; // "NBK" | "JP"
   voterCode: string;
   voterName?: string;
-  voterCompany?: string;         // <-- added (you render this)
+  voterCompany?: string;
   targetCode: string;
   targetName?: string;
-  targetCompany?: string;        // <-- added (you render this)
+  targetCompany?: string;
   voteType?: "token" | "goodCatch";
 };
 
 type MonthTotal = {
   companyId: string;
   companyName: string;
-  project: string;               // "NBK" | "JP"
+  project: string; // "NBK" | "JP"
   count: number;
 };
 
-export default function AdminSummary() {
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export default function Page() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,7 +51,6 @@ export default function AdminSummary() {
       setMonthKey(String(json.monthKey || ""));
 
       const rows: TodayRow[] = Array.isArray(json.todayRows) ? json.todayRows : [];
-      // Optional: sort newest first
       rows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
       setTodayRows(rows);
 
