@@ -33,8 +33,7 @@ function extractStickerFromText(raw: string): string | null {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
-    if (kIdx !== -1 && parts[kIdx + 1])
-      return normalizeSticker(parts[kIdx + 1]);
+    if (kIdx !== -1 && parts[kIdx + 1]) return normalizeSticker(parts[kIdx + 1]);
 
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
     if (qp) return normalizeSticker(qp);
@@ -42,7 +41,6 @@ function extractStickerFromText(raw: string): string | null {
     /* not a URL */
   }
 
-  // fallback
   return normalizeSticker(t);
 }
 
@@ -52,6 +50,7 @@ function isGenericCodePrefix(str: string) {
   return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
 }
 
+/** Error helpers */
 function isSameCompanyError(j: any) {
   if (!j) return false;
   if (j.code === "SAME_COMPANY") return true;
@@ -69,8 +68,7 @@ function isCompanyMonthlyError(j: any) {
   if (j.code === "COMPANY_MONTHLY_LIMIT") return true;
   const err = (j.error || "").toLowerCase();
   return (
-    (err.includes("company") &&
-      (err.includes("monthly") || err.includes("limit"))) ||
+    (err.includes("company") && (err.includes("monthly") || err.includes("limit"))) ||
     j.companyMonthlyRemaining === 0 ||
     j.companyRemaining === 0
   );
@@ -80,11 +78,7 @@ function isCompanyMonthlyError(j: any) {
 async function readJsonSafe(res: Response) {
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
-    try {
-      return await res.json();
-    } catch {
-      return null;
-    }
+    try { return await res.json(); } catch { return null; }
   }
   try {
     const t = await res.text();
@@ -94,11 +88,6 @@ async function readJsonSafe(res: Response) {
   }
 }
 
-function includesAny(haystack: string, needles: string[]) {
-  const h = haystack.toLowerCase();
-  return needles.some((n) => h.includes(n.toLowerCase()));
-}
-
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
@@ -106,35 +95,30 @@ export default function VotePageClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
-  // Big “no self voting” callout
-  const [selfCallout, setSelfCallout] = useState<string>("");
-  const [sameCompanyCallout, setSameCompanyCallout] = useState<string>("");
+  // Big callouts
+  const [selfCallout, setSelfCallout] = useState("");
+  const [sameCompanyCallout, setSameCompanyCallout] = useState("");
+
   const showNoSelf = useCallback(() => {
     setSelfCallout(
       "You cannot give a token to yourself! Please choose a wonderful deserving coworker instead."
     );
-    try {
-      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    } catch {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    try { topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    catch { window.scrollTo({ top: 0, behavior: "smooth" }); }
   }, []);
 
   const showNoSameCompany = useCallback(() => {
     setSameCompanyCallout(
       "No same-company voting! Please choose a wonderful deserving coworker from a different company that's just as awesome as yours!"
     );
-    try {
-      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    } catch {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    try { topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    catch { window.scrollTo({ top: 0, behavior: "smooth" }); }
   }, []);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (
-    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
-  ) as "token" | "goodCatch";
+  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
+    | "token"
+    | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -172,51 +156,32 @@ export default function VotePageClient() {
 
   const lockOut = (kind: LockKind = "daily") => {
     setDailyLocked(true);
-    setLockMsg(
-      kind === "company"
-        ? getNextCompanyCapMessage()
-        : getNextOutOfTokensMessage()
-    );
+    setLockMsg(kind === "company" ? getNextCompanyCapMessage() : getNextOutOfTokensMessage());
   };
 
   async function apiLookup(code: string): Promise<Worker | null> {
-    const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, { cache: "no-store" });
     const j: any = await readJsonSafe(res);
     return j && typeof j === "object" ? j.existing ?? null : null;
   }
 
   async function checkLimits(voter: string, companyId?: string) {
-  try {
-    const qs = new URLSearchParams({ voter });
-    if (companyId) qs.set("companyId", companyId);
+    try {
+      const sp = new URLSearchParams({ voter });
+      if (companyId) sp.set("companyId", companyId);
 
-    const res = await fetch(`/api/vote/limits?${qs.toString()}`, {
-      cache: "no-store",
-    });
-    const j: any = await readJsonSafe(res);
+      const res = await fetch(`/api/vote/limits?${sp.toString()}`, { cache: "no-store" });
+      const j: any = await readJsonSafe(res);
 
-      // Default to “unlocked” if we can't parse numbers
-      const daily = Number.isFinite(+j?.dailyRemaining)
-        ? +j.dailyRemaining
-        : Infinity;
-      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining)
-        ? +j.companyMonthlyRemaining
-        : Infinity;
+      const daily = Number.isFinite(+j?.dailyRemaining) ? +j.dailyRemaining : Infinity;
+      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining) ? +j.companyMonthlyRemaining : Infinity;
       const companyAny =
         Number.isFinite(+j?.companyRemaining) && +j.companyRemaining >= 0
           ? +j.companyRemaining
           : companyMonthly;
 
-      if (companyAny <= 0) {
-        lockOut("company");
-        return;
-      }
-      if (daily <= 0) {
-        lockOut("daily");
-        return;
-      }
+      if (companyAny <= 0) { lockOut("company"); return; }
+      if (daily <= 0) { lockOut("daily"); return; }
       setDailyLocked(false);
     } catch {
       setDailyLocked(false);
@@ -224,71 +189,57 @@ export default function VotePageClient() {
   }
 
   // ---------- Stable handlers ----------
-  const setVoter = useCallback(
-    async (raw: string) => {
-      setMsg("");
-      const code = extractStickerFromText(raw);
-      if (!code) return;
+  const setVoter = useCallback(async (raw: string) => {
+    setMsg("");
+    const code = extractStickerFromText(raw);
+    if (!code) return;
 
-      setVoterCode(code);
-      const w = await apiLookup(code);
+    setVoterCode(code);
+    const w = await apiLookup(code);
 
-      if (!w) {
-        setVoterName("");
-        setVoterCompanyId("");
-        setScanOpen(false);
-        setMsg("We didn’t find your code. Redirecting to register…");
-        setTimeout(() => router.push(`/k/${code}`), 300);
-        return;
-      }
-
-      setVoterName(w.fullName ?? "");
-      setVoterCompanyId(w.companyId ?? "");
-      await checkLimits(code, w.companyId);
-
-      setStep("target");
+    if (!w) {
+      setVoterName("");
+      setVoterCompanyId("");
       setScanOpen(false);
-    },
-    [router]
-  );
+      setMsg("We didn’t find your code. Redirecting to register…");
+      setTimeout(() => router.push(`/k/${code}`), 300);
+      return;
+    }
 
-  const setTarget = useCallback(
-    async (raw: string) => {
-      setMsg("");
-      const code = extractStickerFromText(raw);
-      if (!code) return;
+    setVoterName(w.fullName ?? "");
+    setVoterCompanyId(w.companyId ?? "");
+    await checkLimits(code, w.companyId);
 
-      if (code === voterCode) {
-        showNoSelf();
-        return;
-      }
-      if (getProjectFromCode(code) !== voterProject) {
-        setMsg("Same-project only (NBK→NBK, JP→JP)");
-        return;
-      }
+    setStep("target");
+    setScanOpen(false);
+  }, [router]);
 
-      const w = await apiLookup(code);
-      if (!w) {
-        setMsg(
-          "We couldn't find that sticker. Ask your coworker to register first."
-        );
-        return;
-      }
+  const setTarget = useCallback(async (raw: string) => {
+    setMsg("");
+    const code = extractStickerFromText(raw);
+    if (!code) return;
 
-      if (w.companyId && w.companyId === voterCompanyId) {
-        showNoSameCompany();
-        return;
-      }
+    if (code === voterCode) { showNoSelf(); return; }
+    if (getProjectFromCode(code) !== voterProject) {
+      setMsg("Same-project only (NBK→NBK, JP→JP)");
+      return;
+    }
 
-      setSelfCallout("");
-      setSameCompanyCallout("");
-      setTargetCode(code);
-      setTargetName(w.fullName ?? "");
-      setScanOpen(false);
-      setStep("confirm");
-    },
-    [voterProject, voterCode, showNoSelf]
-  );
+    const w = await apiLookup(code);
+    if (!w) {
+      setMsg("We couldn't find that sticker. Ask your coworker to register first.");
+      return;
+    }
+
+    if (w.companyId && w.companyId === voterCompanyId) { showNoSameCompany(); return; }
+
+    setSelfCallout("");
+    setSameCompanyCallout("");
+    setTargetCode(code);
+    setTargetName(w.fullName ?? "");
+    setScanOpen(false);
+    setStep("confirm");
+  }, [voterProject, voterCode, voterCompanyId, showNoSelf, showNoSameCompany]);
 
   async function submitVote() {
     setMsg("");
@@ -304,32 +255,16 @@ export default function VotePageClient() {
       const json: any = await readJsonSafe(res);
 
       if (json?.ok) {
-        // Post-write remaining checks
-        const daily = Number.isFinite(+json.dailyRemaining)
-          ? +json.dailyRemaining
-          : Infinity;
-        const companyMonthly = Number.isFinite(+json.companyMonthlyRemaining)
-          ? +json.companyMonthlyRemaining
-          : Infinity;
+        // Remaining checks after success
+        const daily = Number.isFinite(+json.dailyRemaining) ? +json.dailyRemaining : Infinity;
+        const companyMonthly = Number.isFinite(+json.companyMonthlyRemaining) ? +json.companyMonthlyRemaining : Infinity;
         const companyAny =
           Number.isFinite(+json.companyRemaining) && +json.companyRemaining >= 0
             ? +json.companyRemaining
             : companyMonthly;
-      } else {
-        if (isSameCompanyError(json)) {
-          showNoSameCompany();
-          setStep("target");
-          setScanOpen(false);
-          return;
-        }
-        if (isCompanyMonthlyError(json)) {
-          lockOut("company");
-          return;
-        }
-        if (isDailyLimitError(json)) {
-          lockOut("daily");
-          return;
-        }
+
+        if (companyAny <= 0) { lockOut("company"); return; }
+        if (daily <= 0) { lockOut("daily"); return; }
 
         const code = json.target?.code || targetCode;
         const name = (json.target?.fullName || targetName || "").trim();
@@ -339,25 +274,13 @@ export default function VotePageClient() {
         return;
       }
 
-      // Error path
-      const err = String(json?.error || "").toLowerCase();
+      // Not ok → classify
+      if (isSameCompanyError(json)) { showNoSameCompany(); setStep("target"); setScanOpen(false); return; }
+      if (isCompanyMonthlyError(json)) { lockOut("company"); return; }
+      if (isDailyLimitError(json)) { lockOut("daily"); return; }
 
-      if (err.includes("self")) {
-        showNoSelf();
-        setStep("target");
-        setScanOpen(false);
-        return;
-      }
-      if (err.includes("company")) {
-        lockOut("company");
-        return;
-      }
-      if (err.includes("daily")) {
-        lockOut("daily");
-        return;
-      }
-
-      setMsg(json?.error || "Error");
+      const err = String(json?.error || "");
+      setMsg(err || "Error");
       setStep("target");
       setScanOpen(false);
     } catch (e: any) {
@@ -371,6 +294,15 @@ export default function VotePageClient() {
   // Close camera on non-scanning steps
   useEffect(() => {
     if (step === "confirm" || step === "done") setScanOpen(false);
+  }, [step]);
+
+  // Clear messages/callouts when you return to target step
+  useEffect(() => {
+    if (step === "target") {
+      setMsg("");
+      setSelfCallout("");
+      setSameCompanyCallout("");
+    }
   }, [step]);
 
   // Pre-check if landing with voter=? in URL
@@ -411,19 +343,10 @@ export default function VotePageClient() {
     if (step !== "target") return;
 
     const q = (query || "").trim();
-    const qLen = q.length;
     const tooBroad = isGenericCodePrefix(q);
 
-    // Auto-clear error msg on step change
-    useEffect(() => {
-      if (step === "target") {
-        setMsg("");
-        setSelfCallout("");
-      }
-    }, [step]);
-
     // If no company filter and query is too short or just NBK/JP, don't fetch.
-    if (!filterCompanyId && (qLen < 3 || tooBroad)) {
+    if (!filterCompanyId && (q.length < 3 || tooBroad)) {
       setResults([]);
       setIsSearching(false);
       return;
@@ -435,16 +358,13 @@ export default function VotePageClient() {
         setIsSearching(true);
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
-        const q = query.trim();
         if (q) {
           params.set("q", q);
         } else if (filterCompanyId === WALSH_COMPANY_ID) {
-          // <— NEW: encourage the API to return WALSH even with empty query
+          // ensure WALSH shows up even with blank query
           params.set("q", "*");
         }
-        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const r = await fetch(`/api/admin/workers?${params.toString()}`, { cache: "no-store" });
         const j: any = await readJsonSafe(r);
         if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
       } catch {
@@ -454,9 +374,7 @@ export default function VotePageClient() {
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [step, filterCompanyId, query, voterProject]);
 
   // AUTO-SCROLL to results (≥3 chars or filter chosen)
@@ -472,25 +390,14 @@ export default function VotePageClient() {
     if (!hasFilter && !hasLongEnoughQuery) return;
     if (!results || results.length === 0) return;
 
-    const y =
-      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
     window.scrollTo({ top: y, behavior: "smooth" });
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [step, filterCompanyId, query, isSearching, results.length]);
 
   // Stable scan handlers
-  const onVoterScan = useCallback(
-    (t: string | null) => {
-      if (t) setVoter(t);
-    },
-    [setVoter]
-  );
-  const onTargetScan = useCallback(
-    (t: string | null) => {
-      if (t) setTarget(t);
-    },
-    [setTarget]
-  );
+  const onVoterScan = useCallback((t: string | null) => { if (t) setVoter(t); }, [setVoter]);
+  const onTargetScan = useCallback((t: string | null) => { if (t) setTarget(t); }, [setTarget]);
 
   // ---------- UI ----------
   if (dailyLocked) {
@@ -517,10 +424,7 @@ export default function VotePageClient() {
         >
           {selfCallout}
           <div className="mt-1">
-            <button
-              className="text-xs underline text-red-100/90"
-              onClick={() => setSelfCallout("")}
-            >
+            <button className="text-xs underline text-red-100/90" onClick={() => setSelfCallout("")}>
               Dismiss
             </button>
           </div>
@@ -535,10 +439,7 @@ export default function VotePageClient() {
           <div className="pr-3">
             <div className="text-sm opacity-90">{sameCompanyCallout}</div>
           </div>
-          <button
-            className="text-xs underline text-red-100/90"
-            onClick={() => setSameCompanyCallout("")}
-          >
+          <button className="text-xs underline text-red-100/90" onClick={() => setSameCompanyCallout("")}>
             Dismiss
           </button>
         </div>
@@ -548,25 +449,17 @@ export default function VotePageClient() {
       {step === "voter" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
-            <p className="text-sm">
-              Scan your QR sticker or enter your code below.
-            </p>
+            <p className="text-sm">Scan your QR sticker or enter your code below.</p>
           </div>
 
           <div className="rounded border overflow-hidden">
             <div className="aspect-[4/3]">
-              <QrScanner
-                onScan={onVoterScan}
-                onError={(e) => setMsg(e.message)}
-              />
+              <QrScanner onScan={onVoterScan} onError={(e) => setMsg(e.message)} />
             </div>
           </div>
 
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setVoter(voterCode);
-            }}
+            onSubmit={(e) => { e.preventDefault(); setVoter(voterCode); }}
             className="flex gap-2"
           >
             <input
@@ -578,9 +471,7 @@ export default function VotePageClient() {
               autoCapitalize="characters"
               autoCorrect="off"
             />
-            <button className="px-4 rounded bg-black text-white" type="submit">
-              Next
-            </button>
+            <button className="px-4 rounded bg-black text-white" type="submit">Next</button>
           </form>
         </section>
       )}
@@ -590,8 +481,7 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
             <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to give
-              a virtual token to?
+              Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
             </p>
 
             {/* Token choice ONLY here */}
@@ -603,7 +493,7 @@ export default function VotePageClient() {
                     size="md"
                     interactive
                     selected={voteType === "token"}
-                    dimmed={voteType !== "token"} // ← dim the other coin
+                    dimmed={voteType !== "token"}
                     onClick={() => setVoteType("token")}
                   />
                   <TypeBadge
@@ -611,7 +501,7 @@ export default function VotePageClient() {
                     size="md"
                     interactive
                     selected={voteType === "goodCatch"}
-                    dimmed={voteType !== "goodCatch"} // ← dim the other coin
+                    dimmed={voteType !== "goodCatch"}
                     onClick={() => setVoteType("goodCatch")}
                   />
                 </div>
@@ -642,10 +532,7 @@ export default function VotePageClient() {
                 <QrScanner
                   key={`scanner-${step}-${scanOpen}`}
                   onScan={onTargetScan}
-                  onError={(e) => {
-                    setMsg(e.message);
-                    setScanOpen(false);
-                  }}
+                  onError={(e) => { setMsg(e.message); setScanOpen(false); }}
                 />
               )}
             </div>
@@ -653,32 +540,23 @@ export default function VotePageClient() {
 
           {/* Search + Company filter */}
           <div className="rounded border p-3 space-y-2">
-            <p className="text-xs text-gray-300">
-              Search by name or code — or — filter by company.
-            </p>
+            <p className="text-xs text-gray-300">Search by name or code — or — filter by company.</p>
 
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 const raw = query.trim();
                 const asCode = extractStickerFromText(raw);
-                if (asCode) {
-                  setTarget(asCode);
-                  return;
-                }
+                if (asCode) { setTarget(asCode); return; }
                 if (results.length === 1) {
                   const w = results[0];
-                  if (getProjectFromCode(w.code) !== voterProject) {
-                    setMsg("Same-project only (NBK→NBK, JP→JP)");
-                    return;
-                  }
-                  if (w.code === voterCode) {
-                    showNoSelf();
-                    return;
-                  }
+                  if (getProjectFromCode(w.code) !== voterProject) { setMsg("Same-project only (NBK→NBK, JP→JP)"); return; }
+                  if (w.companyId && w.companyId === voterCompanyId) { showNoSameCompany(); return; }
+                  if (w.code === voterCode) { showNoSelf(); return; }
                   setTargetCode(w.code);
                   setTargetName(w.fullName || "");
                   setSelfCallout("");
+                  setSameCompanyCallout("");
                   setScanOpen(false);
                   setStep("confirm");
                 }
@@ -702,9 +580,7 @@ export default function VotePageClient() {
               >
                 <option value="">All companies</option>
                 {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
+                  <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </form>
@@ -716,37 +592,21 @@ export default function VotePageClient() {
               ) : results.length ? (
                 <ul className="divide-y border rounded">
                   {results.map((w) => (
-                    <li
-                      key={w.code}
-                      className="flex items-center justify-between p-2"
-                    >
+                    <li key={w.code} className="flex items-center justify-between p-2">
                       <div>
-                        <div className="font-medium">
-                          {w.fullName || "(no name yet)"}
-                        </div>
+                        <div className="font-medium">{w.fullName || "(no name yet)"}</div>
                         <div className="text-xs text-gray-600">{w.code}</div>
                       </div>
                       <button
                         className="px-3 py-1 rounded bg-black text-white"
                         onClick={() => {
-                          if (getProjectFromCode(w.code) !== voterProject) {
-                            setMsg("Same-project only (NBK→NBK, JP→JP)");
-                            return;
-                          }
-                          // ⬇️ NEW: block same-company picks right away
-                          if (w.companyId && w.companyId === voterCompanyId) {
-                            showNoSameCompany();
-                            return;
-                          }
-                          if (w.code === voterCode) {
-                            showNoSelf();
-                            return;
-                          }
-                          setSelfCallout("");
-                          setSameCompanyCallout("");
+                          if (getProjectFromCode(w.code) !== voterProject) { setMsg("Same-project only (NBK→NBK, JP→JP)"); return; }
+                          if (w.companyId && w.companyId === voterCompanyId) { showNoSameCompany(); return; }
+                          if (w.code === voterCode) { showNoSelf(); return; }
                           setTargetCode(w.code);
                           setTargetName(w.fullName || "");
                           setSelfCallout("");
+                          setSameCompanyCallout("");
                           setScanOpen(false);
                           setStep("confirm");
                         }}
@@ -760,15 +620,11 @@ export default function VotePageClient() {
                 <p className="text-sm text-gray-500">No matches found.</p>
               ) : null}
 
-              {/* Hint if user typed only NBK/JP */}
-              {!isSearching &&
-                !filterCompanyId &&
-                isGenericCodePrefix(query) && (
-                  <p className="text-sm text-gray-500 mt-2">
-                    Codes must start with either NBK or JP and followed by
-                    numbers.
-                  </p>
-                )}
+              {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
+                <p className="text-sm text-gray-500 mt-2">
+                  Codes must start with NBK or JP and include digits (e.g., NBK12).
+                </p>
+              )}
             </div>
           </div>
 
@@ -776,30 +632,19 @@ export default function VotePageClient() {
         </section>
       )}
 
-      {/* STEP 3 — confirm (no badges here) */}
+      {/* STEP 3 — confirm */}
       {step === "confirm" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
-              Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
-              ?
+              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => {
-                setStep("target");
-                setScanOpen(false);
-              }}
-            >
+            <button className="flex-1 py-2 rounded border" onClick={() => { setStep("target"); setScanOpen(false); }}>
               Cancel
             </button>
-            <button
-              className="flex-1 py-2 rounded bg-black text-white"
-              onClick={submitVote}
-            >
+            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
               Confirm
             </button>
           </div>
@@ -822,6 +667,7 @@ export default function VotePageClient() {
                 setFilterCompanyId("");
                 setMsg("");
                 setSelfCallout("");
+                setSameCompanyCallout("");
                 setStep("target");
                 setScanOpen(false);
               }}
@@ -831,8 +677,9 @@ export default function VotePageClient() {
             <button
               className="flex-1 py-2 rounded border"
               onClick={() => {
-                setMsg(""); // ← clear any prior error/info
+                setMsg("");
                 setSelfCallout("");
+                setSameCompanyCallout("");
                 setStep("target");
                 setScanOpen(false);
               }}
