@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* ---------- Base theme ---------- */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -25,41 +26,53 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Dark dropdown fallback for some UAs */
-select.bg-neutral-900 option {
-  background: #111827; /* neutral-900 */
-  color: #fff;
+/* Make native form controls prefer dark UI on supported browsers */
+body, .dark-form, form.dark-form {
+  color-scheme: dark;
 }
 
-/* Force native <select> & <option> into dark in mobile browsers */
+/* ---------- Select (dark, readable) ---------- */
+/* Use: wrap the select with .dark-form and add className="dark-select" to the <select> */
 select.dark-select {
-  background-color: #111827;   /* neutral-900 */
-  color: #fff;
-  border-color: #374151;       /* neutral-700 */
-  -webkit-appearance: none;    /* iOS */
+  background-color: #111827;     /* neutral-900 */
+  color: #ffffff;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 0.5rem;         /* match Tailwind rounded */
+  padding: 0.5rem 2.25rem 0.5rem 0.5rem; /* room for chevron */
+  -webkit-appearance: none;      /* iOS */
   appearance: none;
 }
 
-/* Some UAs render options with their own palette */
-select.dark-select option {
-  background-color: #111827;   /* neutral-900 */
-  color: #fff;
+select.dark-select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(16,185,129,0.6); /* emerald focus ring */
+  border-color: rgba(16,185,129,0.6);
 }
 
-/* Optional: a small chevron so the control still looks like a select */
+/* Some browsers render options with their own palette; force dark */
+select.dark-select option {
+  background-color: #111827;
+  color: #ffffff;
+}
+
+/* Small chevron (place a <span class="select-chev">▼</span> absolutely over the select) */
 .select-chev {
   pointer-events: none;
   position: absolute;
   right: 0.75rem;
   top: 50%;
   transform: translateY(-50%);
-  opacity: .8;
+  color: rgba(255,255,255,0.8);
+  font-size: 0.8rem;
 }
 
+/* If you still have older markup using bg-neutral-900, keep this fallback */
+select.bg-neutral-900 option {
+  background: #111827; /* neutral-900 */
+  color: #fff;
+}
 
-
-/* --- Coin Shine Effect --- */
-/* Applies a subtle diagonal highlight sweep */
+/* --- Coin Shine Effect (stronger + per-token timing) --- */
 .token-shimmer {
   position: relative;
   overflow: hidden;
@@ -69,20 +82,25 @@ select.dark-select option {
   content: "";
   position: absolute;
   inset: 0;
+  /* brighter, narrower band so it “pops” more */
   background-image: linear-gradient(
-    110deg,
-    rgba(255,255,255,0.18) 20%,
-    rgba(255,255,255,0.04) 40%,
-    rgba(255,255,255,0.18) 60%
+    100deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,var(--shimmer-peak,0.35)) 10%,
+    rgba(255,255,255,0.10) 45%,
+    rgba(255,255,255,var(--shimmer-peak,0.35)) 70%,
+    rgba(255,255,255,0) 100%
   );
-  background-size: 200% 100%;
-  animation: tokenShimmer 2.2s linear infinite;
+  background-size: 240% 100%;
+  animation: tokenShimmer var(--shimmer-duration, 2.2s) linear infinite;
+  /* each badge gets its own delay via inline var */
+  animation-delay: var(--shimmer-delay, 0s);
   mix-blend-mode: overlay;
   border-radius: 9999px;
   pointer-events: none;
 }
 
 @keyframes tokenShimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -240% 0; }
+  100% { background-position:  240% 0; }
 }

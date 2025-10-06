@@ -464,7 +464,7 @@ export default function VotePageClient() {
       {step === "voter" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
-            <p className="text-sm">Scan your QR code, or enter code below.</p>
+            <p className="text-sm">Scan your QR sticker or enter your code below.</p>
           </div>
 
           <div className="rounded border overflow-hidden">
@@ -482,7 +482,7 @@ export default function VotePageClient() {
           >
             <input
               className="flex-1 border rounded p-2"
-              placeholder="Your code (e.g., NBK1 / JP001)"
+              placeholder="Your code (e.g., nbk1 / JP001)"
               value={voterCode}
               onChange={(e) => setVoterCode(e.target.value)}
               inputMode="search"
@@ -601,7 +601,7 @@ export default function VotePageClient() {
             >
               <input
                 className="w-full border rounded p-2"
-                placeholder="Search name or code (Sam, NBK12, JP010)"
+                placeholder="Search name or code (Sam, nbk1, JP001)"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 inputMode="search"
@@ -669,8 +669,8 @@ export default function VotePageClient() {
               {/* Hint if user typed only NBK/JP */}
               {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
                 <p className="text-sm text-gray-500 mt-2">
-                  Too broad — add a few letters of a name or digits after NBK/JP
-                  (e.g. NBK12).
+                  Too broad — please add digits or enter letters to search by name.
+                  (NBK12, Sam).
                 </p>
               )}
             </div>

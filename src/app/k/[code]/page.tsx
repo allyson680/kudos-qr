@@ -1,6 +1,6 @@
 "use client";
-import QRScanner from "@/components/QRScanner";
-import { useEffect, useMemo, useRef, useState } from "react";
+
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
@@ -18,108 +18,34 @@ type Worker = {
 };
 
 const WALSH_COMPANY_ID = "WALSH";
-const QrScanner = dynamic(() => import("@/Company/QRScanner"), { ssr: false });
+const QRScanner = dynamic(() => import("@/Company/QRScanner"), { ssr: false }); // ✅ single dynamic import
 
 type Step = "profile" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
-/* ------------------------- CompanySelect (dropdown) ------------------------ */
-function CompanySelect({
-  companies,
-  value,
-  onChange,
-}: {
-  companies: { id: string; name?: string }[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState("");
-  const boxRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (!boxRef.current) return;
-      if (!boxRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const qLower = q.toLowerCase();
-
-  const filtered = (companies ?? [])
-    .filter(
-      (c): c is { id: string; name?: string } => !!c && typeof c.id === "string"
-    )
-    .filter((c) => {
-      const nameLower = (c.name ?? "").toLowerCase();
-      const idLower = c.id.toLowerCase();
-      return nameLower.includes(qLower) || idLower.includes(qLower);
-    })
-    .slice(0, 50);
-
-  const selected = (companies ?? []).find((c) => c && c.id === value);
-
-  return (
-    <div className="relative" ref={boxRef}>
-      <button
-        type="button"
-        className="w-full border rounded p-2 text-left"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {selected ? selected.name ?? selected.id : "Select company"}
-      </button>
-
-      {open && (
-        <div className="absolute z-50 mt-1 w-full border rounded bg-white shadow">
-          <input
-            className="w-full p-2 border-b outline-none"
-            placeholder="Search company…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            autoFocus
-          />
-          <div className="max-h-60 overflow-auto" role="listbox">
-            {filtered.length ? (
-              filtered.map((c) => (
-                <div
-                  key={c.id}
-                  role="option"
-                  aria-selected={c.id === value}
-                  className={`px-3 py-2 cursor-pointer hover:bg-gray-100 ${
-                    c.id === value ? "bg-gray-50" : ""
-                  }`}
-                  onClick={() => {
-                    onChange(c.id);
-                    setOpen(false);
-                  }}
-                >
-                  {c.name ?? c.id}
-                </div>
-              ))
-            ) : (
-              <div className="px-3 py-2 text-sm text-gray-500">No results</div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+/* ---------- helpers ---------- */
+function isGenericCodePrefix(str: string) {
+  const t = (str || "").trim().toUpperCase();
+  return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
+}
+async function readJsonSafe(res: Response) {
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const t = await res.text();
+    return { ok: false, error: t?.slice(0, 200) || "Request failed" };
+  } catch {
+    return { ok: false, error: "Request failed" };
+  }
 }
 
 /* ---------------------------------- Page ---------------------------------- */
-
 export default function CodePage({ params }: { params: { code: string } }) {
   // Canonical code (NBK1 -> NBK0001)
   const voterCode = useMemo(
@@ -135,7 +61,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
   const [msg, setMsg] = useState("");
 
   const [voteType, setVoteType] = useState<"token" | "goodCatch">("token");
-  const isWalsh = me?.companyId === WALSH_COMPANY_ID;
+  const isWalsh = (me?.companyId || companyId) === WALSH_COMPANY_ID;
 
   const [step, setStep] = useState<Step>("profile");
 
@@ -156,6 +82,9 @@ export default function CodePage({ params }: { params: { code: string } }) {
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
+  // auto-scroll target list
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+
   const lockOut = (kind: LockKind = "daily") => {
     setDailyLocked(true);
     setLockMsg(
@@ -169,8 +98,8 @@ export default function CodePage({ params }: { params: { code: string } }) {
     const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
       cache: "no-store",
     });
-    const json = await res.json();
-    return json?.existing ?? null;
+    const json = await readJsonSafe(res);
+    return (json as any)?.existing ?? null;
   }
 
   // Check both daily + monthly-company limits
@@ -181,9 +110,12 @@ export default function CodePage({ params }: { params: { code: string } }) {
       const r = await fetch(`/api/vote/limits?${sp.toString()}`, {
         cache: "no-store",
       });
-      const j = await r.json();
+      const j: any = await readJsonSafe(r);
       if (j?.ok) {
-        if (typeof j.companyRemaining === "number" && j.companyRemaining <= 0) {
+        if (
+          typeof j.companyMonthlyRemaining === "number" &&
+          j.companyMonthlyRemaining <= 0
+        ) {
           lockOut("company");
           return;
         }
@@ -209,17 +141,16 @@ export default function CodePage({ params }: { params: { code: string } }) {
           `/api/register?code=${encodeURIComponent(voterCode)}`,
           { cache: "no-store" }
         );
-        const json = await res.json();
+        const json: any = await readJsonSafe(res);
         if (cancelled) return;
 
-        setCompanies(Array.isArray(json.companies) ? json.companies : []);
+        setCompanies(Array.isArray(json?.companies) ? json.companies : []);
 
-        if (json.existing) {
+        if (json?.existing) {
           setMe(json.existing);
           setFullName(json.existing.fullName ?? "");
           setCompanyId(json.existing.companyId ?? "");
           await checkLimits(voterCode, json.existing.companyId ?? "");
-          // stay on "profile" until they tap Continue
         } else {
           setMe(null);
           setFullName("");
@@ -236,21 +167,24 @@ export default function CodePage({ params }: { params: { code: string } }) {
     };
   }, [voterCode]);
 
-  // Search when on the target step
-
   function resetTargetSearch() {
-  setFilterCompanyId("");   // back to “All companies”
-  setQuery("");             // clear search text
-  setResults([]);           // clear old results
-  setTargetCode("");        // clear manual code input
-  setTargetName("");
-}
+    setFilterCompanyId(""); // back to “All companies”
+    setQuery("");
+    setResults([]);
+    setTargetCode("");
+    setTargetName("");
+  }
 
+  // Search when on the target step (with NBK/JP prefix guard)
   useEffect(() => {
     if (step !== "target") return;
 
-    if (!filterCompanyId && !query.trim()) {
+    const q = (query || "").trim();
+    const tooBroad = isGenericCodePrefix(q);
+
+    if (!filterCompanyId && (q.length < 3 || tooBroad)) {
       setResults([]);
+      setIsSearching(false);
       return;
     }
 
@@ -260,12 +194,12 @@ export default function CodePage({ params }: { params: { code: string } }) {
         setIsSearching(true);
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
-        if (query.trim()) params.set("q", query.trim());
+        if (q) params.set("q", q);
         const r = await fetch(`/api/admin/workers?${params.toString()}`, {
           cache: "no-store",
         });
-        const j = await r.json();
-        if (!cancelled) setResults(Array.isArray(j.workers) ? j.workers : []);
+        const j: any = await readJsonSafe(r);
+        if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
       } catch {
         if (!cancelled) setResults([]);
       } finally {
@@ -277,6 +211,22 @@ export default function CodePage({ params }: { params: { code: string } }) {
       cancelled = true;
     };
   }, [step, filterCompanyId, query, project]);
+
+  // Auto-scroll to results after typing ≥3 or selecting a company
+  useEffect(() => {
+    if (step !== "target") return;
+    if (isSearching) return;
+    if (!resultsRef.current) return;
+    const hasFilter = !!filterCompanyId;
+    const hasLongQuery = query.trim().length >= 3;
+    if (!hasFilter && !hasLongQuery) return;
+    if (!results || results.length === 0) return;
+
+    const y =
+      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    window.scrollTo({ top: y, behavior: "smooth" });
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }, [step, filterCompanyId, query, isSearching, results.length]);
 
   async function saveProfile() {
     setMsg("");
@@ -291,15 +241,15 @@ export default function CodePage({ params }: { params: { code: string } }) {
           companyId,
         }),
       });
-      const json = await res.json();
-      if (json.ok) {
+      const json: any = await readJsonSafe(res);
+      if (json?.ok) {
         setMe(json.worker);
         setMsg(me ? "Updated!" : "Registered! You’re all set.");
         await checkLimits(voterCode, companyId);
-        resetTargetSearch(); // ⬅️ add this
+        resetTargetSearch();
         setStep("target");
       } else {
-        setMsg(json.error || "Error");
+        setMsg(json?.error || "Error");
       }
     } catch (e: any) {
       setMsg(e?.message || "Network error");
@@ -317,6 +267,10 @@ export default function CodePage({ params }: { params: { code: string } }) {
       setFeedback("Invalid code format.");
       return;
     }
+    if (code === voterCode) {
+      setFeedback("No self voting — please choose your coworker.");
+      return;
+    }
     if (getProjectFromCode(code) !== project) {
       setFeedback("Same-project only (NBK→NBK, JP→JP)");
       return;
@@ -326,7 +280,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
       const r = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
         cache: "no-store",
       });
-      const j = await r.json();
+      const j: any = await readJsonSafe(r);
       if (!j?.existing) {
         setFeedback(
           "We couldn't find that sticker. Ask your coworker to register first."
@@ -352,17 +306,9 @@ export default function CodePage({ params }: { params: { code: string } }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const json: any = await readJsonSafe(res);
 
-      if (json.ok) {
-        // Hard-stop UI if caps just hit zero
-        if (
-          typeof json.companyRemaining === "number" &&
-          json.companyRemaining <= 0
-        ) {
-          lockOut("company");
-          return;
-        }
+      if (json?.ok) {
         if (
           typeof json.companyMonthlyRemaining === "number" &&
           json.companyMonthlyRemaining <= 0
@@ -390,7 +336,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
         );
         setStep("done");
       } else {
-        const errMsg = json.error || "Error";
+        const errMsg = (json?.error || "Error").toString();
         const err = errMsg.toLowerCase();
         if (err.includes("company")) {
           lockOut("company");
@@ -398,6 +344,11 @@ export default function CodePage({ params }: { params: { code: string } }) {
         }
         if (err.includes("daily")) {
           lockOut("daily");
+          return;
+        }
+        if (err.includes("self")) {
+          setFeedback("No self voting — please choose your coworker.");
+          setStep("target");
           return;
         }
         setFeedback(errMsg);
@@ -465,7 +416,6 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 </p>
               </div>
             )}
-
             <label className="block">
               <span className="text-sm">Your full name</span>
               <input
@@ -475,38 +425,30 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 placeholder="First Last"
               />
             </label>
-
             <label className="block">
-              <span className="text-sm">Company</span>
-              <CompanySelect
-                companies={companies}
-                value={companyId}
-                onChange={setCompanyId}
-              />
-            </label>
-
-            {/* Walsh chooses vote type; others default to Token */}
-            {companyId === WALSH_COMPANY_ID && (
-              <div className="flex gap-2 justify-center">
-                <button
-                  className={`px-3 py-1 rounded border ${
-                    voteType === "token" ? "bg-black text-white" : ""
-                  }`}
-                  onClick={() => setVoteType("token")}
+              {/* Company select (dark + auto-close) */}
+              <div className="relative dark-form">
+                <select
+                  className="dark-select w-full"
+                  value={companyId}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setCompanyId(v);
+                    (e.target as HTMLSelectElement).blur(); // auto-close
+                  }}
+                  aria-label="Select company"
+                  required
                 >
-                  Token of Excellence
-                </button>
-                <button
-                  className={`px-3 py-1 rounded border ${
-                    voteType === "goodCatch" ? "bg-black text-white" : ""
-                  }`}
-                  onClick={() => setVoteType("goodCatch")}
-                >
-                  Good Catch
-                </button>
+                  <option value="">Select a company…</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name ?? c.id}
+                    </option>
+                  ))}
+                </select>
+                <span className="select-chev">▼</span>
               </div>
-            )}
-
+            </label>
             <button
               onClick={saveProfile}
               className="w-full py-3 rounded bg-black text-white disabled:opacity-50"
@@ -514,6 +456,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
             >
               Continue
             </button>
+            setVoteType("token"); // default after registering
           </>
         )}
 
@@ -525,6 +468,35 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 Hello <b>{fullName || voterCode}</b>, who would you like to give
                 a virtual token to?
               </p>
+              {/* Walsh-only: choose token type here on the target step */}
+              {isWalsh ? (
+                <>
+                  <div className="mt-3 flex items-center justify-center gap-4">
+                    <TypeBadge
+                      type="token"
+                      size="lg"
+                      interactive
+                      selected={voteType === "token"}
+                      onClick={() => setVoteType("token")}
+                    />
+                    <TypeBadge
+                      type="goodCatch"
+                      size="lg"
+                      interactive
+                      selected={voteType === "goodCatch"}
+                      onClick={() => setVoteType("goodCatch")}
+                    />
+                  </div>
+                  <p className="text-xs text-center text-gray-300 mt-2">
+                    Tap a token above, then scan or search your coworker.
+                  </p>
+                </>
+              ) : (
+                // non-Walsh just shows the token (not selectable)
+                <div className="mt-3 flex justify-center">
+                  <TypeBadge type="token" size="lg" />
+                </div>
+              )}
             </div>
 
             <div className="rounded border overflow-hidden">
@@ -564,7 +536,10 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 <select
                   className="w-full border rounded p-2 bg-neutral-900 text-white border-neutral-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   value={filterCompanyId}
-                  onChange={(e) => setFilterCompanyId(e.target.value)}
+                  onChange={(e) => {
+                    setFilterCompanyId(e.target.value);
+                    (e.target as HTMLSelectElement).blur(); // auto-close native picker
+                  }}
                   title="Filter by company"
                 >
                   <option value="" className="bg-neutral-900 text-white">
@@ -582,45 +557,65 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 </select>
               </div>
 
-              {isSearching ? (
-                <p className="text-sm text-neutral-400">Searching…</p>
-              ) : results.length ? (
-                <ul className="divide-y border rounded">
-                  {results.map((w) => (
-                    <li
-                      key={w.code}
-                      className="flex items-center justify-between p-2"
-                    >
-                      <div>
-                        <div className="font-medium">
-                          {w.fullName || "(no name yet)"}
-                        </div>
-                        <div className="text-xs text-neutral-400">{w.code}</div>
-                      </div>
-                      <button
-                        className="px-3 py-1 rounded bg-black text-white"
-                        onClick={() => {
-                          if (getProjectFromCode(w.code) !== project) {
-                            setMsg("Same-project only (NBK→NBK, JP→JP)");
-                            return;
-                          }
-                          setTargetCode(w.code);
-                          setTargetName(w.fullName || "");
-                          setStep("confirm");
-                        }}
+              <div ref={resultsRef}>
+                {isSearching ? (
+                  <p className="text-sm text-neutral-400">Searching…</p>
+                ) : results.length ? (
+                  <ul className="divide-y border rounded">
+                    {results.map((w) => (
+                      <li
+                        key={w.code}
+                        className="flex items-center justify-between p-2"
                       >
-                        Select
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : filterCompanyId || query.trim() ? (
-                <p className="text-sm text-neutral-400">No matches found.</p>
-              ) : (
-                <p className="text-xs text-neutral-500">
-                  Search a name/code or filter by company.
-                </p>
-              )}
+                        <div>
+                          <div className="font-medium">
+                            {w.fullName || "(no name yet)"}
+                          </div>
+                          <div className="text-xs text-neutral-400">
+                            {w.code}
+                          </div>
+                        </div>
+                        <button
+                          className="px-3 py-1 rounded bg-black text-white"
+                          onClick={() => {
+                            if (getProjectFromCode(w.code) !== project) {
+                              setMsg("Same-project only (NBK→NBK, JP→JP)");
+                              return;
+                            }
+                            if (w.code === voterCode) {
+                              setFeedback(
+                                "No self voting — please choose your coworker."
+                              );
+                              return;
+                            }
+                            setTargetCode(w.code);
+                            setTargetName(w.fullName || "");
+                            setStep("confirm");
+                          }}
+                        >
+                          Select
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : filterCompanyId || query.trim() ? (
+                  <p className="text-sm text-neutral-400">No matches found.</p>
+                ) : (
+                  <p className="text-xs text-neutral-500">
+                    Search a name/code or filter by company.
+                  </p>
+                )}
+
+                {/* Too-broad hint */}
+                {!isSearching &&
+                  !filterCompanyId &&
+                  isGenericCodePrefix(query) && (
+                    <p className="text-sm text-neutral-400 mt-2">
+                      Too broad — add a few letters of a name or digits after
+                      NBK/JP (e.g. NBK12).
+                    </p>
+                  )}
+              </div>
             </div>
 
             {feedback && <p className="text-sm text-center">{feedback}</p>}
@@ -628,37 +623,37 @@ export default function CodePage({ params }: { params: { code: string } }) {
         )}
 
         {/* STEP 3 — confirm */}
-      {step === "confirm" && (
-  <section className="space-y-3">
-    <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
-      <p className="text-sm">
-        Confirm token is for{" "}
-        <b className="font-semibold">
-          {targetName ? `${targetName} (${targetCode})` : targetCode}
-        </b>
-        ?
-      </p>
-      <div className="mt-3 flex justify-center">
-        <TypeBadge type={voteType} />
-      </div>
-    </div>
+        {step === "confirm" && (
+          <section className="space-y-3">
+            <div className="rounded-xl border border-neutral-800 bg-neutral-900/90 text-white p-4 shadow-lg">
+              <p className="text-sm">
+                Confirm token is for{" "}
+                <b className="font-semibold">
+                  {targetName ? `${targetName} (${targetCode})` : targetCode}
+                </b>
+                ?
+              </p>
+              <div className="mt-3 flex justify-center">
+                <TypeBadge type={voteType} />
+              </div>
+            </div>
 
-    <div className="flex gap-2">
-      <button
-        className="flex-1 py-2 rounded border border-neutral-300"
-        onClick={() => setStep("target")}
-      >
-        Cancel
-      </button>
-      <button
-        className="flex-1 py-2 rounded bg-black text-white"
-        onClick={submitVote}
-      >
-        Confirm
-      </button>
-    </div>
-  </section>
-)}
+            <div className="flex gap-2">
+              <button
+                className="flex-1 py-2 rounded border border-neutral-300"
+                onClick={() => setStep("target")}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 py-2 rounded bg-black text-white"
+                onClick={submitVote}
+              >
+                Confirm
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* STEP 4 — done */}
         {step === "done" && (
