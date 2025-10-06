@@ -103,9 +103,21 @@ export default function VotePageClient() {
 
   // Big “no self voting” callout
   const [selfCallout, setSelfCallout] = useState<string>("");
+  const [sameCompanyCallout, setSameCompanyCallout] = useState<string>("");
   const showNoSelf = useCallback(() => {
     setSelfCallout(
       "You cannot give a token to yourself! Please choose a wonderful deserving coworker instead."
+    );
+    try {
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, []);
+
+  const showNoSameCompany = useCallback(() => {
+    setSameCompanyCallout(
+      "No same-company voting! Please choose a wonderful deserving coworker from a different company that's just as awesome as yours!"
     );
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -261,10 +273,12 @@ export default function VotePageClient() {
       }
 
       if (w.companyId && w.companyId === voterCompanyId) {
-        setMsg("No same-company voting");
+        showNoSameCompany();
         return;
       }
 
+      setSelfCallout("");
+      setSameCompanyCallout("");
       setTargetCode(code);
       setTargetName(w.fullName ?? "");
       setScanOpen(false);
@@ -300,7 +314,7 @@ export default function VotePageClient() {
             : companyMonthly;
       } else {
         if (isSameCompanyError(json)) {
-          setMsg("No same-company voting");
+          showNoSameCompany();
           setStep("target");
           setScanOpen(false);
           return;
@@ -499,6 +513,24 @@ export default function VotePageClient() {
               Dismiss
             </button>
           </div>
+        </div>
+      )}
+
+      {sameCompanyCallout && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-500/40 bg-red-700/30 text-red-100 p-3 flex items-start justify-between"
+        >
+          <div className="pr-3">
+            <div className="font-semibold">No same-company voting!</div>
+            <div className="text-sm opacity-90">{sameCompanyCallout}</div>
+          </div>
+          <button
+            className="text-xs underline text-red-100/90"
+            onClick={() => setSameCompanyCallout("")}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -709,13 +741,15 @@ export default function VotePageClient() {
                           }
                           // ⬇️ NEW: block same-company picks right away
                           if (w.companyId && w.companyId === voterCompanyId) {
-                            setMsg("No same-company voting");
+                            showNoSameCompany();
                             return;
                           }
                           if (w.code === voterCode) {
                             showNoSelf();
                             return;
                           }
+                          setSelfCallout("");
+                          setSameCompanyCallout("");
                           setTargetCode(w.code);
                           setTargetName(w.fullName || "");
                           setSelfCallout("");
