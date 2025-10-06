@@ -52,6 +52,30 @@ function isGenericCodePrefix(str: string) {
   return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
 }
 
+function isSameCompanyError(j: any) {
+  if (!j) return false;
+  if (j.code === "SAME_COMPANY") return true;
+  const err = (j.error || "").toLowerCase();
+  return /\bsame[-\s]?company\b/.test(err);
+}
+function isDailyLimitError(j: any) {
+  if (!j) return false;
+  if (j.code === "DAILY_LIMIT") return true;
+  const err = (j.error || "").toLowerCase();
+  return err.includes("daily") && err.includes("limit");
+}
+function isCompanyMonthlyError(j: any) {
+  if (!j) return false;
+  if (j.code === "COMPANY_MONTHLY_LIMIT") return true;
+  const err = (j.error || "").toLowerCase();
+  return (
+    (err.includes("company") &&
+      (err.includes("monthly") || err.includes("limit"))) ||
+    j.companyMonthlyRemaining === 0 ||
+    j.companyRemaining === 0
+  );
+}
+
 /** Safe JSON reader to avoid client crashes on HTML error pages */
 async function readJsonSafe(res: Response) {
   const ct = res.headers.get("content-type") || "";
@@ -236,6 +260,11 @@ export default function VotePageClient() {
         return;
       }
 
+      if (w.companyId && w.companyId === voterCompanyId) {
+        setMsg("No same-company voting");
+        return;
+      }
+
       setTargetCode(code);
       setTargetName(w.fullName ?? "");
       setScanOpen(false);
@@ -269,12 +298,18 @@ export default function VotePageClient() {
           Number.isFinite(+json.companyRemaining) && +json.companyRemaining >= 0
             ? +json.companyRemaining
             : companyMonthly;
-
-        if (companyAny <= 0) {
+      } else {
+        if (isSameCompanyError(json)) {
+          setMsg("No same-company voting");
+          setStep("target");
+          setScanOpen(false);
+          return;
+        }
+        if (isCompanyMonthlyError(json)) {
           lockOut("company");
           return;
         }
-        if (daily <= 0) {
+        if (isDailyLimitError(json)) {
           lockOut("daily");
           return;
         }
@@ -670,6 +705,11 @@ export default function VotePageClient() {
                         onClick={() => {
                           if (getProjectFromCode(w.code) !== voterProject) {
                             setMsg("Same-project only (NBK→NBK, JP→JP)");
+                            return;
+                          }
+                          // ⬇️ NEW: block same-company picks right away
+                          if (w.companyId && w.companyId === voterCompanyId) {
+                            setMsg("No same-company voting");
                             return;
                           }
                           if (w.code === voterCode) {

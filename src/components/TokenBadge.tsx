@@ -42,7 +42,7 @@ export default function TypeBadge({ type, className = "" }: Props) {
         ${className}
       `}
     >
-      Token of<br />Excellence
+      Token<br />of<br />Excellence
     </div>
   );
 }
