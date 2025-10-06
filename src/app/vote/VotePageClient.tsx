@@ -94,6 +94,11 @@ async function readJsonSafe(res: Response) {
   }
 }
 
+function includesAny(haystack: string, needles: string[]) {
+  const h = haystack.toLowerCase();
+  return needles.some((n) => h.includes(n.toLowerCase()));
+}
+
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
@@ -178,21 +183,19 @@ export default function VotePageClient() {
     const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
       cache: "no-store",
     });
-    const json = await readJsonSafe(res);
-    if (json && typeof json === "object" && "existing" in json) {
-      return (json as any).existing ?? null;
-    }
-    return null;
+    const j: any = await readJsonSafe(res);
+    return j && typeof j === "object" ? j.existing ?? null : null;
   }
 
   async function checkLimits(voter: string, companyId?: string) {
-    try {
-      const params = new URLSearchParams({ voter });
-      if (companyId) params.set("companyId", companyId);
-      const r = await fetch(`/api/vote/limits?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const j: any = await readJsonSafe(r);
+  try {
+    const qs = new URLSearchParams({ voter });
+    if (companyId) qs.set("companyId", companyId);
+
+    const res = await fetch(`/api/vote/limits?${qs.toString()}`, {
+      cache: "no-store",
+    });
+    const j: any = await readJsonSafe(res);
 
       // Default to “unlocked” if we can't parse numbers
       const daily = Number.isFinite(+j?.dailyRemaining)
