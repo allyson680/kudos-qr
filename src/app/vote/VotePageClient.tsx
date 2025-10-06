@@ -578,7 +578,7 @@ export default function VotePageClient() {
       {/* STEP 2 — target */}
       {step === "target" && (
         <section className="space-y-3">
-          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
+          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
             <p className="text-sm">
               Hello <b>{voterName || voterCode}</b>, who would you like to give
               a virtual token to?
@@ -587,47 +587,29 @@ export default function VotePageClient() {
             {/* Token choice ONLY here */}
             {isWalsh ? (
               <>
-                <div className="mt-3 flex items-center justify-center gap-6">
-                  <div
-                    className={
-                      voteType === "token"
-                        ? "scale-110 transition-transform"
-                        : ""
-                    }
-                  >
-                    <TypeBadge
-                      type="token"
-                      size="lg"
-                      interactive
-                      selected={voteType === "token"}
-                      onClick={() => setVoteType("token")}
-                    />
-                  </div>
-                  <div
-                    className={
-                      voteType === "goodCatch"
-                        ? "scale-110 transition-transform"
-                        : ""
-                    }
-                  >
-                    <TypeBadge
-                      type="goodCatch"
-                      size="lg"
-                      interactive
-                      selected={voteType === "goodCatch"}
-                      onClick={() => setVoteType("goodCatch")}
-                    />
-                  </div>
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-3 max-w-xs mx-auto">
+                  <TypeBadge
+                    type="token"
+                    size="md" // ← smaller
+                    interactive
+                    selected={voteType === "token"}
+                    onClick={() => setVoteType("token")}
+                  />
+                  <TypeBadge
+                    type="goodCatch"
+                    size="md" // ← smaller
+                    interactive
+                    selected={voteType === "goodCatch"}
+                    onClick={() => setVoteType("goodCatch")}
+                  />
                 </div>
-                <p className="text-xs text-center text-gray-300 mt-2">
+                <p className="text-xs text-center text-gray-300 mt-3">
                   Tap a token above, then scan or search your coworker.
                 </p>
               </>
             ) : (
               <div className="mt-3 flex justify-center">
-                <div className="scale-110">
-                  <TypeBadge type="token" size="lg" />
-                </div>
+                <TypeBadge type="token" size="md" />
               </div>
             )}
           </div>
