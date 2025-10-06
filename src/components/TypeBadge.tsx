@@ -1,3 +1,4 @@
+// components/TypeBadge.tsx
 "use client";
 import React from "react";
 
@@ -6,6 +7,7 @@ type Props = {
   size?: "md" | "lg";
   interactive?: boolean;
   selected?: boolean;
+  dimmed?: boolean;          // ← NEW: let parent dim the unselected coin
   onClick?: () => void;
 };
 
@@ -14,69 +16,58 @@ export default function TypeBadge({
   size = "lg",
   interactive = false,
   selected = false,
+  dimmed = false,
   onClick,
 }: Props) {
   const isToken = type === "token";
 
   const dims =
     size === "lg"
-      ? "w-32 h-32 md:w-32 md:h-32"
+      ? "w-32 h-32 md:w-36 md:h-36"
       : "w-24 h-24";
 
-  // Keep your colors
+  // Token of Excellence: green with white text
+  // Good Catch: gold with green text
   const bg = isToken
     ? "bg-gradient-to-b from-green-500 to-green-700 text-white"
     : "bg-gradient-to-b from-amber-300 to-yellow-500 text-emerald-800";
 
-  const ring  = selected ? "ring-4 ring-black/25" : "ring-2 ring-black/10";
-  const hover = interactive ? "cursor-pointer transition-transform hover:scale-[1.03]" : "";
-  const bump  = selected ? "scale-[1.12] md:scale-[1.18]" : "";
+  // Base ring — selected gets MUCH stronger ring + scale pop
+  const ringBase = "ring-2 ring-black/10";
+  const ringSelected = "ring-8 ring-white/40";
 
-  // Desync shimmer phase (stable per mount)
-  const [delay] = React.useState(() => {
-    // random between -2.0s and 0s so animation starts mid-sweep
-    return `${-(Math.random() * 2).toFixed(2)}s`;
-  });
+  // Interactions & emphasis
+  const scaleEmphasis = selected ? "scale-[1.25] md:scale-[1.28]" : "scale-100";
+  const hover = interactive ? "cursor-pointer hover:scale-[1.05]" : "";
 
-  // Faster & brighter when selected
-  const duration = selected ? "5.5s" : "4.2s";
-  const peak     = selected ? 0.5 : 0.35;
-
-  const style = {
-    // CSS vars consumed by .token-shimmer in globals
-    ["--shimmer-delay" as any]: delay,
-    ["--shimmer-duration" as any]: duration,
-    ["--shimmer-peak" as any]: peak,
-  } as React.CSSProperties;
+  // Dim the unselected coin when there IS a selection
+  const dim = dimmed && !selected ? "opacity-45 brightness-90" : "";
 
   return (
     <button
       type="button"
       aria-label={isToken ? "Token of Excellence" : "Good Catch"}
       onClick={interactive ? onClick : undefined}
-      style={style}
-      className={`relative ${dims} flex items-center justify-center rounded-full
-                  font-extrabold text-center shadow-lg select-none token-shimmer
-                  ${bg} ${ring} ${hover} ${bump}`}
+      className={[
+        "relative", dims,
+        "flex items-center justify-center rounded-full font-extrabold text-center",
+        "shadow-lg select-none token-shimmer",
+        bg,
+        selected ? ringSelected : ringBase,
+        hover,
+        scaleEmphasis,
+        dim,
+        "transition-[transform,opacity,filter] duration-300 ease-out will-change-transform"
+      ].join(" ")}
     >
-      <span
-        className={`leading-tight text-xs md:text-sm tracking-wide ${
-          isToken ? "text-white" : "text-emerald-800"
-        }`}
-      >
+      <span className={`leading-tight text-xs md:text-sm tracking-wide ${isToken ? "text-white" : "text-emerald-800"}`}>
         {isToken ? (
           <>
-            TOKEN
-            <br />
-            OF
-            <br />
-            EXCELLENCE
+            TOKEN<br />OF<br />EXCELLENCE
           </>
         ) : (
           <>
-            GOOD
-            <br />
-            CATCH
+            GOOD<br />CATCH
           </>
         )}
       </span>

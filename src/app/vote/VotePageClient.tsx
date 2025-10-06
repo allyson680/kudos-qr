@@ -411,6 +411,14 @@ export default function VotePageClient() {
     const qLen = q.length;
     const tooBroad = isGenericCodePrefix(q);
 
+    // Auto-clear error msg on step change
+    useEffect(() => {
+      if (step === "target") {
+        setMsg("");
+        setSelfCallout("");
+      }
+    }, [step]);
+
     // If no company filter and query is too short or just NBK/JP, don't fetch.
     if (!filterCompanyId && (qLen < 3 || tooBroad)) {
       setResults([]);
@@ -522,7 +530,6 @@ export default function VotePageClient() {
           className="rounded-lg border border-red-500/40 bg-red-700/30 text-red-100 p-3 flex items-start justify-between"
         >
           <div className="pr-3">
-            <div className="font-semibold">No same-company voting!</div>
             <div className="text-sm opacity-90">{sameCompanyCallout}</div>
           </div>
           <button
@@ -587,19 +594,21 @@ export default function VotePageClient() {
             {/* Token choice ONLY here */}
             {isWalsh ? (
               <>
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-3 max-w-xs mx-auto">
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-5 max-w-xs mx-auto">
                   <TypeBadge
                     type="token"
-                    size="md" // ← smaller
+                    size="md"
                     interactive
                     selected={voteType === "token"}
+                    dimmed={voteType !== "token"} // ← dim the other coin
                     onClick={() => setVoteType("token")}
                   />
                   <TypeBadge
                     type="goodCatch"
-                    size="md" // ← smaller
+                    size="md"
                     interactive
                     selected={voteType === "goodCatch"}
+                    dimmed={voteType !== "goodCatch"} // ← dim the other coin
                     onClick={() => setVoteType("goodCatch")}
                   />
                 </div>
@@ -807,12 +816,25 @@ export default function VotePageClient() {
                 setTargetCode("");
                 setTargetName("");
                 setQuery("");
-                setFilterCompanyId(""); // reset to All companies
+                setFilterCompanyId("");
+                setMsg("");
+                setSelfCallout("");
                 setStep("target");
                 setScanOpen(false);
               }}
             >
               Vote again
+            </button>
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => {
+                setMsg(""); // ← clear any prior error/info
+                setSelfCallout("");
+                setStep("target");
+                setScanOpen(false);
+              }}
+            >
+              Cancel
             </button>
           </div>
         </section>
