@@ -1,5 +1,3 @@
-"use client";
-
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -10,9 +8,7 @@ export const metadata: Metadata = {
   title: "Token of Excellence",
   applicationName: "Token of Excellence",
   description: "Scan a sticker and give virtual tokens.",
-  // ✅ point to your single manifest file in /public
-  manifest: "/manifest.webmanifest",
-  // ✅ this becomes <meta name="theme-color" ...>
+  manifest: "/manifest.json",
   themeColor: "#065f46",
   icons: {
     icon: [

@@ -7,19 +7,32 @@ export const dynamic = "force-dynamic";
 
 // Time zone (configurable). In Vercel set env var VOTE_TZ if you want local time.
 const TZ = process.env.VOTE_TZ || "UTC";
+export function fmtTZ(
+  date: Date = new Date(),
+  opts: Intl.DateTimeFormatOptions = {}
+) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, ...opts }).format(
+    date
+  );
+}
 
 // Format helpers (all keyed in TZ, stable for day/month grouping)
 function fmt(now = new Date(), opts: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, ...opts }).format(now);
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, ...opts }).format(
+    now
+  );
 }
-function dayKey(now = new Date()) {
-  return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}-${fmt(
-    now,
-    { day: "2-digit" }
-  )}`;
+export function dayKeyTZ(date: Date = new Date()) {
+  const y = fmtTZ(date, { year: "numeric" });
+  const m = fmtTZ(date, { month: "2-digit" });
+  const d = fmtTZ(date, { day: "2-digit" });
+  return `${y}-${m}-${d}`;          // e.g. 2025-02-14
 }
-function monthKey(now = new Date()) {
-  return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}`;
+
+export function monthKeyTZ(date: Date = new Date()) {
+  const y = fmtTZ(date, { year: "numeric" });
+  const m = fmtTZ(date, { month: "2-digit" });
+  return `${y}-${m}`;               // e.g. 2025-02
 }
 
 /**
@@ -49,16 +62,17 @@ export async function GET(_req: NextRequest) {
   const db = getDb();
   try {
     const now = new Date();
-    const dk = dayKey(now);
-    const mk = monthKey(now);
+    const dk = dayKeyTZ(now);
+    const mk = monthKeyTZ(now);
 
     // Pull today’s votes, all workers/companies, and this month’s votes in parallel
-    const [votesSnap, workersSnap, companiesSnap, monthSnap] = await Promise.all([
-      db.collection("votes").where("dayKey", "==", dk).get(),
-      db.collection("workers").get(),
-      db.collection("companies").get(),
-      db.collection("votes").where("monthKey", "==", mk).get(),
-    ]);
+    const [votesSnap, workersSnap, companiesSnap, monthSnap] =
+      await Promise.all([
+        db.collection("votes").where("dayKey", "==", dk).get(),
+        db.collection("workers").get(),
+        db.collection("companies").get(),
+        db.collection("votes").where("monthKey", "==", mk).get(),
+      ]);
 
     // Index workers for fast joins
     const workers: Record<string, any> = {};
@@ -78,14 +92,17 @@ export async function GET(_req: NextRequest) {
       const v = d.data() as any;
       const voter = workers[v.voterCode] || {};
       const target = workers[v.targetCode] || {};
-      const project = v.project || getProjectFromCode(v.voterCode || target.code || "");
+      const project =
+        v.project || getProjectFromCode(v.voterCode || target.code || "");
 
       return {
         time: toIso(v.createdAt),
         project,
         voterCode: v.voterCode,
         voterName: voter.fullName || "",
-        voterCompany: companyName(v.voterCompanyId || voter.companyId || v.companyId),
+        voterCompany: companyName(
+          v.voterCompanyId || voter.companyId || v.companyId
+        ),
         targetCode: v.targetCode,
         targetName: target.fullName || "",
         targetCompany: companyName(v.targetCompanyId || target.companyId),
@@ -103,7 +120,8 @@ export async function GET(_req: NextRequest) {
       const voter = workers[v.voterCode] || {};
       const project = v.project || getProjectFromCode(v.voterCode || "");
       // Prefer voterCompanyId saved on the vote; fall back to voter.companyId
-      const cid: string = v.voterCompanyId || v.companyId || voter.companyId || "";
+      const cid: string =
+        v.voterCompanyId || v.companyId || voter.companyId || "";
       const key = `${project}__${cid}`;
       if (!totals[key]) {
         totals[key] = {
@@ -117,7 +135,9 @@ export async function GET(_req: NextRequest) {
     });
 
     const monthTotals = Object.values(totals).sort((a, b) =>
-      a.project === b.project ? b.count - a.count : a.project.localeCompare(b.project)
+      a.project === b.project
+        ? b.count - a.count
+        : a.project.localeCompare(b.project)
     );
 
     return NextResponse.json({
@@ -130,6 +150,9 @@ export async function GET(_req: NextRequest) {
       monthTotals,
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Failed" },
+      { status: 500 }
+    );
   }
 }
