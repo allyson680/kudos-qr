@@ -1,4 +1,5 @@
-// src/app/layout.tsx
+"use client";
+
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -9,8 +10,10 @@ export const metadata: Metadata = {
   title: "Token of Excellence",
   applicationName: "Token of Excellence",
   description: "Scan a sticker and give virtual tokens.",
-  // make sure this matches your file name in /public
-  manifest: "/manifest.json",
+  // ✅ point to your single manifest file in /public
+  manifest: "/manifest.webmanifest",
+  // ✅ this becomes <meta name="theme-color" ...>
+  themeColor: "#065f46",
   icons: {
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },

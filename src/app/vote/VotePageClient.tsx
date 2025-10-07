@@ -19,22 +19,21 @@ const QrScanner = dynamic(() => import("@/Company/QRScanner"), { ssr: false });
 type Step = "voter" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
-/** Extract a sticker code from raw text OR a QR URL */
+/* ---------- helpers ---------- */
+
+// Pull code from raw text, URL, or QR payload
 function extractStickerFromText(raw: string): string | null {
   if (!raw) return null;
   const t = raw.trim();
 
-  // direct code (NBK1 / NBK-001 / JP010)
   const m = t.match(/\b(?:NBK|JP)-?\d{1,4}\b/i);
   if (m) return normalizeSticker(m[0]);
 
-  // URL cases: /k/<code>, ?voter=<code>, ?code=<code>
   try {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
     if (kIdx !== -1 && parts[kIdx + 1]) return normalizeSticker(parts[kIdx + 1]);
-
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
     if (qp) return normalizeSticker(qp);
   } catch {
@@ -44,41 +43,19 @@ function extractStickerFromText(raw: string): string | null {
   return normalizeSticker(t);
 }
 
-/** Ignore bare prefixes so "NBK" / "JP" (and dashed) don't explode the list */
+// Treat bare prefixes as “too broad” so the list doesn’t explode
 function isGenericCodePrefix(str: string) {
   const t = (str || "").trim().toUpperCase();
   return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
 }
 
-/** Error helpers */
-function isSameCompanyError(j: any) {
-  if (!j) return false;
-  if (j.code === "SAME_COMPANY") return true;
-  const err = (j.error || "").toLowerCase();
-  return /\bsame[-\s]?company\b/.test(err);
-}
-function isDailyLimitError(j: any) {
-  if (!j) return false;
-  if (j.code === "DAILY_LIMIT") return true;
-  const err = (j.error || "").toLowerCase();
-  return err.includes("daily") && err.includes("limit");
-}
-function isCompanyMonthlyError(j: any) {
-  if (!j) return false;
-  if (j.code === "COMPANY_MONTHLY_LIMIT") return true;
-  const err = (j.error || "").toLowerCase();
-  return (
-    (err.includes("company") && (err.includes("monthly") || err.includes("limit"))) ||
-    j.companyMonthlyRemaining === 0 ||
-    j.companyRemaining === 0
-  );
-}
-
-/** Safe JSON reader to avoid client crashes on HTML error pages */
+// Safe JSON so HTML error pages don’t crash the client
 async function readJsonSafe(res: Response) {
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
-    try { return await res.json(); } catch { return null; }
+    try {
+      return await res.json();
+    } catch {}
   }
   try {
     const t = await res.text();
@@ -95,24 +72,30 @@ export default function VotePageClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
-  // Big callouts
+  // Callouts
   const [selfCallout, setSelfCallout] = useState("");
   const [sameCompanyCallout, setSameCompanyCallout] = useState("");
 
   const showNoSelf = useCallback(() => {
     setSelfCallout(
-      "You cannot give a token to yourself! Please choose a wonderful deserving coworker instead."
+      "No self-voting! Please choose a deserving coworker instead."
     );
-    try { topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }
-    catch { window.scrollTo({ top: 0, behavior: "smooth" }); }
+    try {
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
 
   const showNoSameCompany = useCallback(() => {
     setSameCompanyCallout(
-      "No same-company voting! Please choose a wonderful deserving coworker from a different company that's just as awesome as yours!"
+      "No same-company voting! Please pick someone from a different company."
     );
-    try { topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }
-    catch { window.scrollTo({ top: 0, behavior: "smooth" }); }
+    try {
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, []);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
@@ -146,7 +129,7 @@ export default function VotePageClient() {
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // scanner overlay control (keeps camera off until tapped on target step)
+  // scanner overlay control
   const [scanOpen, setScanOpen] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -156,11 +139,17 @@ export default function VotePageClient() {
 
   const lockOut = (kind: LockKind = "daily") => {
     setDailyLocked(true);
-    setLockMsg(kind === "company" ? getNextCompanyCapMessage() : getNextOutOfTokensMessage());
+    setLockMsg(
+      kind === "company"
+        ? getNextCompanyCapMessage()
+        : getNextOutOfTokensMessage()
+    );
   };
 
   async function apiLookup(code: string): Promise<Worker | null> {
-    const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+    const res = await fetch(`/api/register?code=${encodeURIComponent(code)}`, {
+      cache: "no-store",
+    });
     const j: any = await readJsonSafe(res);
     return j && typeof j === "object" ? j.existing ?? null : null;
   }
@@ -169,77 +158,105 @@ export default function VotePageClient() {
     try {
       const sp = new URLSearchParams({ voter });
       if (companyId) sp.set("companyId", companyId);
+      const r = await fetch(`/api/vote/limits?${sp.toString()}`, {
+        cache: "no-store",
+      });
+      const j: any = await readJsonSafe(r);
 
-      const res = await fetch(`/api/vote/limits?${sp.toString()}`, { cache: "no-store" });
-      const j: any = await readJsonSafe(res);
-
-      const daily = Number.isFinite(+j?.dailyRemaining) ? +j.dailyRemaining : Infinity;
-      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining) ? +j.companyMonthlyRemaining : Infinity;
+      const daily = Number.isFinite(+j?.dailyRemaining)
+        ? +j.dailyRemaining
+        : Infinity;
+      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining)
+        ? +j.companyMonthlyRemaining
+        : Infinity;
       const companyAny =
         Number.isFinite(+j?.companyRemaining) && +j.companyRemaining >= 0
           ? +j.companyRemaining
           : companyMonthly;
 
-      if (companyAny <= 0) { lockOut("company"); return; }
-      if (daily <= 0) { lockOut("daily"); return; }
+      if (companyAny <= 0) {
+        lockOut("company");
+        return;
+      }
+      if (daily <= 0) {
+        lockOut("daily");
+        return;
+      }
       setDailyLocked(false);
     } catch {
       setDailyLocked(false);
     }
   }
 
-  // ---------- Stable handlers ----------
-  const setVoter = useCallback(async (raw: string) => {
-    setMsg("");
-    const code = extractStickerFromText(raw);
-    if (!code) return;
+  /* ---------- stable handlers ---------- */
 
-    setVoterCode(code);
-    const w = await apiLookup(code);
+  const setVoter = useCallback(
+    async (raw: string) => {
+      setMsg("");
+      setSelfCallout("");
+      setSameCompanyCallout("");
+      const code = extractStickerFromText(raw);
+      if (!code) return;
 
-    if (!w) {
-      setVoterName("");
-      setVoterCompanyId("");
+      setVoterCode(code);
+      const w = await apiLookup(code);
+
+      if (!w) {
+        setVoterName("");
+        setVoterCompanyId("");
+        setScanOpen(false);
+        setMsg("We didn’t find your code. Redirecting to register…");
+        setTimeout(() => router.push(`/k/${code}`), 300);
+        return;
+      }
+
+      setVoterName(w.fullName ?? "");
+      setVoterCompanyId(w.companyId ?? "");
+      await checkLimits(code, w.companyId);
+
+      setStep("target");
       setScanOpen(false);
-      setMsg("We didn’t find your code. Redirecting to register…");
-      setTimeout(() => router.push(`/k/${code}`), 300);
-      return;
-    }
+    },
+    [router]
+  );
 
-    setVoterName(w.fullName ?? "");
-    setVoterCompanyId(w.companyId ?? "");
-    await checkLimits(code, w.companyId);
+  const setTarget = useCallback(
+    async (raw: string) => {
+      setMsg("");
+      const code = extractStickerFromText(raw);
+      if (!code) return;
 
-    setStep("target");
-    setScanOpen(false);
-  }, [router]);
+      if (code === voterCode) {
+        showNoSelf();
+        return;
+      }
+      if (getProjectFromCode(code) !== voterProject) {
+        setMsg("Same-project only (NBK→NBK, JP→JP)");
+        return;
+      }
 
-  const setTarget = useCallback(async (raw: string) => {
-    setMsg("");
-    const code = extractStickerFromText(raw);
-    if (!code) return;
+      const w = await apiLookup(code);
+      if (!w) {
+        setMsg(
+          "We couldn't find that sticker. Ask your coworker to register first."
+        );
+        return;
+      }
 
-    if (code === voterCode) { showNoSelf(); return; }
-    if (getProjectFromCode(code) !== voterProject) {
-      setMsg("Same-project only (NBK→NBK, JP→JP)");
-      return;
-    }
+      if (w.companyId && w.companyId === voterCompanyId) {
+        showNoSameCompany();
+        return;
+      }
 
-    const w = await apiLookup(code);
-    if (!w) {
-      setMsg("We couldn't find that sticker. Ask your coworker to register first.");
-      return;
-    }
-
-    if (w.companyId && w.companyId === voterCompanyId) { showNoSameCompany(); return; }
-
-    setSelfCallout("");
-    setSameCompanyCallout("");
-    setTargetCode(code);
-    setTargetName(w.fullName ?? "");
-    setScanOpen(false);
-    setStep("confirm");
-  }, [voterProject, voterCode, voterCompanyId, showNoSelf, showNoSameCompany]);
+      setSelfCallout("");
+      setSameCompanyCallout("");
+      setTargetCode(code);
+      setTargetName(w.fullName ?? "");
+      setScanOpen(false);
+      setStep("confirm");
+    },
+    [voterProject, voterCode, voterCompanyId, showNoSelf, showNoSameCompany]
+  );
 
   async function submitVote() {
     setMsg("");
@@ -255,17 +272,6 @@ export default function VotePageClient() {
       const json: any = await readJsonSafe(res);
 
       if (json?.ok) {
-        // Remaining checks after success
-        const daily = Number.isFinite(+json.dailyRemaining) ? +json.dailyRemaining : Infinity;
-        const companyMonthly = Number.isFinite(+json.companyMonthlyRemaining) ? +json.companyMonthlyRemaining : Infinity;
-        const companyAny =
-          Number.isFinite(+json.companyRemaining) && +json.companyRemaining >= 0
-            ? +json.companyRemaining
-            : companyMonthly;
-
-        if (companyAny <= 0) { lockOut("company"); return; }
-        if (daily <= 0) { lockOut("daily"); return; }
-
         const code = json.target?.code || targetCode;
         const name = (json.target?.fullName || targetName || "").trim();
         setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
@@ -274,13 +280,32 @@ export default function VotePageClient() {
         return;
       }
 
-      // Not ok → classify
-      if (isSameCompanyError(json)) { showNoSameCompany(); setStep("target"); setScanOpen(false); return; }
-      if (isCompanyMonthlyError(json)) { lockOut("company"); return; }
-      if (isDailyLimitError(json)) { lockOut("daily"); return; }
+      const err = String(json?.error || "").toLowerCase();
+      if (json?.code === "SAME_COMPANY" || err.includes("same") && err.includes("company")) {
+        showNoSameCompany();
+        setStep("target");
+        setScanOpen(false);
+        return;
+      }
+      if (json?.code === "DAILY_LIMIT" || (err.includes("daily") && err.includes("limit"))) {
+        lockOut("daily");
+        return;
+      }
+      if (
+        json?.code === "COMPANY_MONTHLY_LIMIT" ||
+        err.includes("company") && (err.includes("monthly") || err.includes("limit"))
+      ) {
+        lockOut("company");
+        return;
+      }
+      if (err.includes("self")) {
+        showNoSelf();
+        setStep("target");
+        setScanOpen(false);
+        return;
+      }
 
-      const err = String(json?.error || "");
-      setMsg(err || "Error");
+      setMsg(json?.error || "Error");
       setStep("target");
       setScanOpen(false);
     } catch (e: any) {
@@ -290,27 +315,19 @@ export default function VotePageClient() {
     }
   }
 
-  // ---------- Effects ----------
-  // Close camera on non-scanning steps
+  /* ---------- effects ---------- */
+
+  // Close camera when not on a scanning step
   useEffect(() => {
     if (step === "confirm" || step === "done") setScanOpen(false);
   }, [step]);
 
-  // Clear messages/callouts when you return to target step
-  useEffect(() => {
-    if (step === "target") {
-      setMsg("");
-      setSelfCallout("");
-      setSameCompanyCallout("");
-    }
-  }, [step]);
-
-  // Pre-check if landing with voter=? in URL
+  // If landing with voter=?, pre-check limits
   useEffect(() => {
     if (voterFromQS) checkLimits(voterFromQS);
   }, [voterFromQS]);
 
-  // If /vote?voter=... and not registered yet, send to /k/<code>
+  // If voter from QS isn’t registered, send to /k/<code>
   useEffect(() => {
     if (!voterFromQS) return;
     (async () => {
@@ -326,7 +343,7 @@ export default function VotePageClient() {
     })();
   }, [voterFromQS, router]);
 
-  // Load companies on target step
+  // Load companies on target step (filter dropdown shows ALL companies from DB)
   useEffect(() => {
     if (step !== "target") return;
     (async () => {
@@ -345,7 +362,7 @@ export default function VotePageClient() {
     const q = (query || "").trim();
     const tooBroad = isGenericCodePrefix(q);
 
-    // If no company filter and query is too short or just NBK/JP, don't fetch.
+    // If no company filter and query is too short or just NBK/JP, don't fetch
     if (!filterCompanyId && (q.length < 3 || tooBroad)) {
       setResults([]);
       setIsSearching(false);
@@ -358,13 +375,10 @@ export default function VotePageClient() {
         setIsSearching(true);
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
-        if (q) {
-          params.set("q", q);
-        } else if (filterCompanyId === WALSH_COMPANY_ID) {
-          // ensure WALSH shows up even with blank query
-          params.set("q", "*");
-        }
-        const r = await fetch(`/api/admin/workers?${params.toString()}`, { cache: "no-store" });
+        if (q) params.set("q", q);
+        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+          cache: "no-store",
+        });
         const j: any = await readJsonSafe(r);
         if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
       } catch {
@@ -374,37 +388,40 @@ export default function VotePageClient() {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [step, filterCompanyId, query, voterProject]);
 
-  // AUTO-SCROLL to results (≥3 chars or filter chosen)
+  // AUTO-SCROLL when user types ≥3 chars or picks a company
   useEffect(() => {
     if (step !== "target") return;
     if (isSearching) return;
     if (!resultsRef.current) return;
 
-    const minChars = 3;
     const hasFilter = !!filterCompanyId;
-    const hasLongEnoughQuery = query.trim().length >= minChars;
+    const hasLongEnoughQuery = query.trim().length >= 3;
 
     if (!hasFilter && !hasLongEnoughQuery) return;
     if (!results || results.length === 0) return;
 
-    const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    const y =
+      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
     window.scrollTo({ top: y, behavior: "smooth" });
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [step, filterCompanyId, query, isSearching, results.length]);
 
-  // Stable scan handlers
-  const onVoterScan = useCallback((t: string | null) => { if (t) setVoter(t); }, [setVoter]);
-  const onTargetScan = useCallback((t: string | null) => { if (t) setTarget(t); }, [setTarget]);
+  // Stable scan callbacks
+  const onVoterScan = useCallback((t: string | null) => t && setVoter(t), [setVoter]);
+  const onTargetScan = useCallback((t: string | null) => t && setTarget(t), [setTarget]);
 
-  // ---------- UI ----------
+  /* ---------- UI ---------- */
+
   if (dailyLocked) {
     return (
       <main className="p-4 max-w-md mx-auto space-y-4">
         <section className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white text-center">
-          <p className="text-base font-medium">
+          <p className="text-base font-semibold">
             {lockMsg || "You’ve hit the limit for now. Please try again later."}
           </p>
         </section>
@@ -417,14 +434,18 @@ export default function VotePageClient() {
       <h1 className="text-xl font-semibold text-center">Vote</h1>
       <div ref={topRef} />
 
+      {/* Big callouts */}
       {selfCallout && (
         <div
           role="alert"
-          className="rounded-lg border border-red-500/40 bg-red-700/40 text-red-50 p-4 text-center text-sm font-semibold shadow-md animate-pulse"
+          className="rounded-lg border border-red-500/60 bg-red-600/20 text-red-900 dark:text-red-100 p-4 text-center text-sm font-extrabold shadow-md"
         >
           {selfCallout}
           <div className="mt-1">
-            <button className="text-xs underline text-red-100/90" onClick={() => setSelfCallout("")}>
+            <button
+              className="text-xs underline"
+              onClick={() => setSelfCallout("")}
+            >
               Dismiss
             </button>
           </div>
@@ -434,14 +455,17 @@ export default function VotePageClient() {
       {sameCompanyCallout && (
         <div
           role="alert"
-          className="rounded-lg border border-red-500/40 bg-red-700/30 text-red-100 p-3 flex items-start justify-between"
+          className="rounded-lg border border-red-500/60 bg-red-600/20 text-red-900 dark:text-red-100 p-4 text-center text-sm font-extrabold shadow-md"
         >
-          <div className="pr-3">
-            <div className="text-sm opacity-90">{sameCompanyCallout}</div>
+          {sameCompanyCallout}
+          <div className="mt-1">
+            <button
+              className="text-xs underline"
+              onClick={() => setSameCompanyCallout("")}
+            >
+              Dismiss
+            </button>
           </div>
-          <button className="text-xs underline text-red-100/90" onClick={() => setSameCompanyCallout("")}>
-            Dismiss
-          </button>
         </div>
       )}
 
@@ -459,7 +483,10 @@ export default function VotePageClient() {
           </div>
 
           <form
-            onSubmit={(e) => { e.preventDefault(); setVoter(voterCode); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              setVoter(voterCode);
+            }}
             className="flex gap-2"
           >
             <input
@@ -471,7 +498,9 @@ export default function VotePageClient() {
               autoCapitalize="characters"
               autoCorrect="off"
             />
-            <button className="px-4 rounded bg-black text-white" type="submit">Next</button>
+            <button className="px-4 rounded bg-black text-white" type="submit">
+              Next
+            </button>
           </form>
         </section>
       )}
@@ -484,10 +513,10 @@ export default function VotePageClient() {
               Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
             </p>
 
-            {/* Token choice ONLY here */}
+            {/* Token choice ONLY here, with extra spacing & dimming */}
             {isWalsh ? (
               <>
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-5 max-w-xs mx-auto">
+                <div className="mt-4 mb-2 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
                   <TypeBadge
                     type="token"
                     size="md"
@@ -505,7 +534,7 @@ export default function VotePageClient() {
                     onClick={() => setVoteType("goodCatch")}
                   />
                 </div>
-                <p className="text-xs text-center text-gray-300 mt-3">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
                   Tap a token above, then scan or search your coworker.
                 </p>
               </>
@@ -532,7 +561,10 @@ export default function VotePageClient() {
                 <QrScanner
                   key={`scanner-${step}-${scanOpen}`}
                   onScan={onTargetScan}
-                  onError={(e) => { setMsg(e.message); setScanOpen(false); }}
+                  onError={(e) => {
+                    setMsg(e.message);
+                    setScanOpen(false);
+                  }}
                 />
               )}
             </div>
@@ -540,19 +572,33 @@ export default function VotePageClient() {
 
           {/* Search + Company filter */}
           <div className="rounded border p-3 space-y-2">
-            <p className="text-xs text-gray-300">Search by name or code — or — filter by company.</p>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+              Search by name or code — or — filter by company.
+            </p>
 
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 const raw = query.trim();
                 const asCode = extractStickerFromText(raw);
-                if (asCode) { setTarget(asCode); return; }
+                if (asCode) {
+                  setTarget(asCode);
+                  return;
+                }
                 if (results.length === 1) {
                   const w = results[0];
-                  if (getProjectFromCode(w.code) !== voterProject) { setMsg("Same-project only (NBK→NBK, JP→JP)"); return; }
-                  if (w.companyId && w.companyId === voterCompanyId) { showNoSameCompany(); return; }
-                  if (w.code === voterCode) { showNoSelf(); return; }
+                  if (getProjectFromCode(w.code) !== voterProject) {
+                    setMsg("Same-project only (NBK→NBK, JP→JP)");
+                    return;
+                  }
+                  if (w.companyId === voterCompanyId) {
+                    showNoSameCompany();
+                    return;
+                  }
+                  if (w.code === voterCode) {
+                    showNoSelf();
+                    return;
+                  }
                   setTargetCode(w.code);
                   setTargetName(w.fullName || "");
                   setSelfCallout("");
@@ -575,12 +621,18 @@ export default function VotePageClient() {
               <select
                 className="w-full border rounded p-2 bg-neutral-900 text-white"
                 value={filterCompanyId}
-                onChange={(e) => setFilterCompanyId(e.target.value)}
+                onChange={(e) => {
+                  setFilterCompanyId(e.target.value);
+                  // auto-close native picker on mobile
+                  (e.target as HTMLSelectElement).blur();
+                }}
                 title="Filter by company"
               >
                 <option value="">All companies</option>
                 {companies.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
             </form>
@@ -594,15 +646,26 @@ export default function VotePageClient() {
                   {results.map((w) => (
                     <li key={w.code} className="flex items-center justify-between p-2">
                       <div>
-                        <div className="font-medium">{w.fullName || "(no name yet)"}</div>
+                        <div className="font-medium">
+                          {w.fullName || "(no name yet)"}
+                        </div>
                         <div className="text-xs text-gray-600">{w.code}</div>
                       </div>
                       <button
                         className="px-3 py-1 rounded bg-black text-white"
                         onClick={() => {
-                          if (getProjectFromCode(w.code) !== voterProject) { setMsg("Same-project only (NBK→NBK, JP→JP)"); return; }
-                          if (w.companyId && w.companyId === voterCompanyId) { showNoSameCompany(); return; }
-                          if (w.code === voterCode) { showNoSelf(); return; }
+                          if (getProjectFromCode(w.code) !== voterProject) {
+                            setMsg("Same-project only (NBK→NBK, JP→JP)");
+                            return;
+                          }
+                          if (w.companyId === voterCompanyId) {
+                            showNoSameCompany();
+                            return;
+                          }
+                          if (w.code === voterCode) {
+                            showNoSelf();
+                            return;
+                          }
                           setTargetCode(w.code);
                           setTargetName(w.fullName || "");
                           setSelfCallout("");
@@ -617,12 +680,17 @@ export default function VotePageClient() {
                   ))}
                 </ul>
               ) : filterCompanyId || query.trim() ? (
-                <p className="text-sm text-gray-500">No matches found.</p>
+                <p className="text-sm text-gray-500">
+                  {filterCompanyId && !query.trim()
+                    ? "No employees registered yet for this company."
+                    : "No matches found."}
+                </p>
               ) : null}
 
+              {/* Hint if user typed only NBK/JP */}
               {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
                 <p className="text-sm text-gray-500 mt-2">
-                  Codes must start with NBK or JP and include digits (e.g., NBK12).
+                  Add a few digits after NBK/JP (e.g. NBK12) or type a name.
                 </p>
               )}
             </div>
@@ -632,19 +700,29 @@ export default function VotePageClient() {
         </section>
       )}
 
-      {/* STEP 3 — confirm */}
+      {/* STEP 3 — confirm (no badges here) */}
       {step === "confirm" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
-              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              Confirm token is for{" "}
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>
           </div>
           <div className="flex gap-2">
-            <button className="flex-1 py-2 rounded border" onClick={() => { setStep("target"); setScanOpen(false); }}>
+            <button
+              className="flex-1 py-2 rounded border"
+              onClick={() => {
+                setStep("target");
+                setScanOpen(false);
+              }}
+            >
               Cancel
             </button>
-            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
+            <button
+              className="flex-1 py-2 rounded bg-black text-white"
+              onClick={submitVote}
+            >
               Confirm
             </button>
           </div>
@@ -673,18 +751,6 @@ export default function VotePageClient() {
               }}
             >
               Vote again
-            </button>
-            <button
-              className="flex-1 py-2 rounded border"
-              onClick={() => {
-                setMsg("");
-                setSelfCallout("");
-                setSameCompanyCallout("");
-                setStep("target");
-                setScanOpen(false);
-              }}
-            >
-              Cancel
             </button>
           </div>
         </section>
