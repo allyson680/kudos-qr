@@ -317,6 +317,13 @@ export default function VotePageClient() {
 
   /* ---------- effects ---------- */
 
+  // typing or changing the company means they're making a new choice
+  useEffect(() => {
+  setSelfCallout("");
+  setSameCompanyCallout("");
+  setMsg("");
+}, [query, filterCompanyId]);
+
   // Close camera when not on a scanning step
   useEffect(() => {
     if (step === "confirm" || step === "done") setScanOpen(false);
@@ -370,23 +377,31 @@ export default function VotePageClient() {
     }
 
     let cancelled = false;
-    (async () => {
-      try {
-        setIsSearching(true);
-        const params = new URLSearchParams();
-        if (filterCompanyId) params.set("companyId", filterCompanyId);
-        if (q) params.set("q", q);
-        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-          cache: "no-store",
-        });
-        const j: any = await readJsonSafe(r);
-        if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
-      } catch {
-        if (!cancelled) setResults([]);
-      } finally {
-        if (!cancelled) setIsSearching(false);
-      }
-    })();
+(async () => {
+  try {
+    setIsSearching(true);
+    const params = new URLSearchParams();
+    if (filterCompanyId) params.set("companyId", filterCompanyId);
+
+    const qTrim = q; // already trimmed above
+    if (qTrim) {
+      params.set("q", qTrim);
+    } else if (filterCompanyId && !qTrim) {
+      // 👇 ensure we still get results when only a company is selected
+      params.set("q", "*");
+    }
+
+    const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+      cache: "no-store",
+    });
+    const j: any = await readJsonSafe(r);
+    if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
+  } catch {
+    if (!cancelled) setResults([]);
+  } finally {
+    if (!cancelled) setIsSearching(false);
+  }
+})();
 
     return () => {
       cancelled = true;
