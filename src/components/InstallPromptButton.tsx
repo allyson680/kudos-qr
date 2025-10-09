@@ -8,48 +8,57 @@ function isStandalone() {
   if (window.matchMedia?.("(display-mode: standalone)").matches) return true;
   // iOS Safari
   // @ts-ignore
-  if (typeof navigator.standalone === "boolean" && navigator.standalone) return true;
+  if (typeof navigator !== "undefined" && navigator.standalone === true) return true;
   return false;
 }
+
 function isIOS() {
   if (typeof navigator === "undefined") return false;
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
 
 export default function InstallPromptButton() {
-  const [deferred, setDeferred] = useState<any>(null);
-  const [installed, setInstalled] = useState(false);
-  const [show, setShow] = useState(false);
-  const ios = isIOS();
+  const [canInstall, setCanInstall] = useState(false);
+  const [showIOSHint, setShowIOSHint] = useState(false);
 
   useEffect(() => {
-    if (isStandalone()) {
-      setInstalled(true);
-      return;
+    if (isStandalone()) return;
+
+    // Re-check when page gains focus (BIP can arrive later)
+    const sync = () => setCanInstall(!!window.__bipEvent);
+    sync();
+    window.addEventListener("focus", sync);
+
+    // iOS never fires BIP — show a lightweight hint once
+    if (isIOS()) {
+      const t = setTimeout(() => setShowIOSHint(true), 1000);
+      return () => {
+        window.removeEventListener("focus", sync);
+        clearTimeout(t);
+      };
     }
-    const onBeforeInstall = (e: any) => {
-      e.preventDefault();
-      setDeferred(e);
-      setShow(true);
-    };
-    const onInstalled = () => setInstalled(true);
 
-    window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    window.addEventListener("appinstalled", onInstalled);
-
-    const t = setTimeout(() => setShow(true), 1200); // iOS hint
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
-      window.removeEventListener("appinstalled", onInstalled);
-      clearTimeout(t);
-    };
+    return () => window.removeEventListener("focus", sync);
   }, []);
 
-  if (installed || isStandalone()) return null;
+  if (isStandalone()) return null;
+
+  const handleInstall = async () => {
+    const ev = window.__bipEvent;
+    if (!ev) return;
+    try {
+      await ev.prompt();
+      // Optional: await ev.userChoice;
+    } finally {
+      // Clear so we can’t prompt twice
+      window.__bipEvent = undefined;
+      setCanInstall(false);
+    }
+  };
 
   return (
     <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-md">
-      {deferred && (
+      {canInstall && (
         <div className="rounded-2xl shadow-lg bg-white border p-3">
           <div className="font-medium mb-2">Install app?</div>
           <p className="text-sm text-gray-600 mb-3">
@@ -58,29 +67,34 @@ export default function InstallPromptButton() {
           <div className="flex gap-2">
             <button
               className="px-3 py-2 rounded bg-black text-white flex-1"
-              onClick={async () => {
-                deferred.prompt();
-                await deferred.userChoice; // accepted/dismissed
-                setDeferred(null);
-              }}
+              onClick={handleInstall}
             >
               Install
             </button>
-            <button className="px-3 py-2 rounded border flex-1" onClick={() => setDeferred(null)}>
+            <button
+              className="px-3 py-2 rounded border flex-1"
+              onClick={() => {
+                window.__bipEvent = undefined;
+                setCanInstall(false);
+              }}
+            >
               Not now
             </button>
           </div>
         </div>
       )}
 
-      {!deferred && ios && show && (
+      {!canInstall && showIOSHint && (
         <div className="rounded-2xl shadow-lg bg-white border p-3">
-          <div className="font-medium mb-2">Add to Home Screen</div>
+          <div className="font-medium mb-1">Add to Home Screen</div>
           <p className="text-sm text-gray-600">
             In Safari: tap <b>Share</b> → <b>Add to Home Screen</b>.
           </p>
           <div className="mt-2 text-right">
-            <button className="px-3 py-1 text-sm underline" onClick={() => setShow(false)}>
+            <button
+              className="px-3 py-1 text-sm underline"
+              onClick={() => setShowIOSHint(false)}
+            >
               Got it
             </button>
           </div>
