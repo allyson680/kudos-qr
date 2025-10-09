@@ -10,7 +10,7 @@ type BeforeInstallPromptEvent = Event & {
 
 declare global {
   interface Window {
-    __bipEvent?: BeforeInstallPromptEvent;
+    __bipEvent?: any;
     __hasBipListener?: boolean;
   }
 }
