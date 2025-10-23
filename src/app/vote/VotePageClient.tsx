@@ -438,11 +438,13 @@ export default function VotePageClient() {
   }, [voterFromQS, router]);
 
   // Load companies for the filter dropdown when entering the target step
-useEffect(() => {
+ useEffect(() => {
   if (step !== "target") return;
+
   (async () => {
     try {
-      const res = await fetch("/api/admin/companies", { cache: "no-store" });
+      // This route returns: { companies, existing }
+      const res = await fetch("/api/register", { cache: "no-store" });
       const json: any = await readJsonSafe(res);
       setCompanies(Array.isArray(json?.companies) ? json.companies : []);
     } catch (err) {
@@ -451,7 +453,6 @@ useEffect(() => {
     }
   })();
 }, [step]);
-
 
   // Live search — starts after typing the first letter
 useEffect(() => {

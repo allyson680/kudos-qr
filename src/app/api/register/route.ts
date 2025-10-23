@@ -1,4 +1,3 @@
-// src/app/api/register/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
 import { FieldValue } from "firebase-admin/firestore";
