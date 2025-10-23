@@ -7,7 +7,7 @@ type Props = {
   size?: "md" | "lg";
   interactive?: boolean;
   selected?: boolean;
-  dimmed?: boolean;          // ← NEW: let parent dim the unselected coin
+  dimmed?: boolean; // lets the parent dim the unselected coin
   onClick?: () => void;
 };
 
@@ -21,27 +21,29 @@ export default function TypeBadge({
 }: Props) {
   const isToken = type === "token";
 
-  const dims =
-    size === "lg"
-      ? "w-32 h-32 md:w-36 md:h-36"
-      : "w-24 h-24";
+  // Physical footprint stays constant; we only scale with transform.
+  const dims = size === "lg" ? "w-32 h-32 md:w-36 md:h-36" : "w-24 h-24";
 
-  // Token of Excellence: green with white text
-  // Good Catch: gold with green text
+  // Colors
   const bg = isToken
     ? "bg-gradient-to-b from-green-500 to-green-700 text-white"
     : "bg-gradient-to-b from-amber-300 to-yellow-500 text-emerald-800";
 
-  // Base ring — selected gets MUCH stronger ring + scale pop
-  const ringBase = "ring-2 ring-black/10";
-  const ringSelected = "ring-8 ring-white/40";
+  // Keep ring thickness the same (no layout/visual size jump from ring)
+  const ring = selected ? "ring-4 ring-white/60" : "ring-4 ring-white/25";
 
-  // Interactions & emphasis
-  const scaleEmphasis = selected ? "scale-[1.25] md:scale-[1.28]" : "scale-100";
-  const hover = interactive ? "cursor-pointer hover:scale-[1.05]" : "";
+  // Selected vs unselected size via transform only
+  // (This guarantees “on load” = “when selected” size.)
+  const scale = selected ? "scale-[1.10]" : "scale-[0.95]";
 
-  // Dim the unselected coin when there IS a selection
-  const dim = dimmed && !selected ? "opacity-45 brightness-90" : "";
+  // Keep it interactive without affecting size
+  const hover = interactive ? "cursor-pointer hover:brightness-110" : "";
+
+  // Optional dim for unselected when another is picked
+  const dim = dimmed && !selected ? "opacity-55 brightness-95" : "";
+
+  // Subtle glow that does NOT use inset sizing (pure blur)
+  const glowOpacity = selected ? "opacity-35" : "opacity-18";
 
   return (
     <button
@@ -50,14 +52,14 @@ export default function TypeBadge({
       onClick={interactive ? onClick : undefined}
       className={[
         "relative", dims,
-        "flex items-center justify-center rounded-full font-extrabold text-center",
-        "shadow-lg select-none token-shimmer",
+        "flex items-center justify-center rounded-full font-extrabold text-center select-none",
+        "shadow-lg token-shimmer",
         bg,
-        selected ? ringSelected : ringBase,
+        ring,
+        scale,
         hover,
-        scaleEmphasis,
         dim,
-        "transition-[transform,opacity,filter] duration-300 ease-out will-change-transform"
+        "transition-[transform,opacity,filter,box-shadow] duration-200 ease-out will-change-transform",
       ].join(" ")}
     >
       <span className={`leading-tight text-xs md:text-sm tracking-wide ${isToken ? "text-white" : "text-emerald-800"}`}>
@@ -72,13 +74,16 @@ export default function TypeBadge({
         )}
       </span>
 
-      {/* subtle inner ring */}
-      <div className="pointer-events-none absolute inset-[6%] rounded-full ring-2 ring-white/48" />
-      {/* soft outer glow */}
+      {/* Subtle inner ring (pure ring, no inset that changes visual size) */}
+      <div className="pointer-events-none absolute inset-[6%] rounded-full ring-2 ring-white/45" />
+
+      {/* Soft outer bloom (pure blur, no inset offset) */}
       <div
-        className={`pointer-events-none absolute -inset-1 rounded-full blur-md opacity-30 ${
-          isToken ? "bg-green-500" : "bg-amber-400"
-        }`}
+        className={[
+          "pointer-events-none absolute inset-0 rounded-full blur-md",
+          glowOpacity,
+          isToken ? "bg-green-500" : "bg-amber-400",
+        ].join(" ")}
       />
     </button>
   );
