@@ -25,10 +25,10 @@ type FeedbackModalProps = {
   voterCompanyId: string;
 };
 
-const FeedbackModal = dynamic<FeedbackModalProps>(
+/*const FeedbackModal = dynamic<FeedbackModalProps>(
   () => import("@/components/FeedbackModal"),
   { ssr: false }
-);
+); */
 
 /* ---------- helpers ---------- */
 
@@ -77,7 +77,7 @@ async function readJsonSafe(res: Response) {
 }
 
 // Local feedback gate (fallback if server doesn't tell us)
-const LS_VOTES_KEY = "fb_votesGiven";
+/*const LS_VOTES_KEY = "fb_votesGiven";
 const LS_LAST_FB_KEY = "fb_lastFeedbackAt";
 
 function shouldPromptFeedbackLocal(): boolean {
@@ -96,7 +96,7 @@ function shouldPromptFeedbackLocal(): boolean {
   } catch {
     return false;
   }
-}
+} */
 
 
 export default function VotePageClient() {
@@ -822,15 +822,7 @@ export default function VotePageClient() {
         </section>
       )}
 
-      {/* Feedback modal (conditionally shown) */}
-      {setShowFeedback && (
-  <FeedbackModal
-    onClose={() => setShowFeedback(false)}
-    project={voterProject}
-    voterCode={voterCode}
-    voterCompanyId={voterCompanyId}
-  />
-)}
+     
     </main>
   );
 }
