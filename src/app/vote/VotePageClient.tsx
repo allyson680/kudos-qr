@@ -438,17 +438,21 @@ export default function VotePageClient() {
     };
   }, [voterFromQS, router]);
 
-  // Load companies on target step (filter dropdown shows ALL companies from DB)
-  useEffect(() => {
-    if (step !== "target") return;
-    (async () => {
-      try {
-        const res = await fetch("/api/register", { cache: "no-store" });
-        const json: any = await readJsonSafe(res);
-        setCompanies(Array.isArray(json?.companies) ? json.companies : []);
-      } catch {}
-    })();
-  }, [step]);
+  // Load companies for the filter dropdown when entering the target step
+useEffect(() => {
+  if (step !== "target") return;
+  (async () => {
+    try {
+      const res = await fetch("/api/admin/companies", { cache: "no-store" });
+      const json: any = await readJsonSafe(res);
+      setCompanies(Array.isArray(json?.companies) ? json.companies : []);
+    } catch (err) {
+      console.error("Failed to load companies", err);
+      setCompanies([]);
+    }
+  })();
+}, [step]);
+
 
   // Search workers (target step only) — with NBK/JP prefix guard
   useEffect(() => {
@@ -457,11 +461,6 @@ export default function VotePageClient() {
     const q = (query || "").trim();
     const tooBroad = isGenericCodePrefix(q);
 
-    if (!filterCompanyId && (q.length < 3 || tooBroad)) {
-      setResults([]);
-      setIsSearching(false);
-      return;
-    }
 
     let cancelled = false;
      const handle = setTimeout(async () => {
