@@ -1,4 +1,6 @@
-// src/app/api/feedback/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // optional, avoids caching surprises
+
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { formatInTimeZone } from "date-fns-tz";

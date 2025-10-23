@@ -18,7 +18,6 @@ type Worker = {
 };
 
 const WALSH_COMPANY_ID = "WALSH";
-const QRScanner = dynamic(() => import("@/Company/QRScanner"), { ssr: false }); // ✅ single dynamic import
 
 type Step = "profile" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
@@ -500,11 +499,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
 
             <div className="rounded border overflow-hidden">
               <div className="aspect-[4/3] bg-black/5">
-                <QRScanner
-                  autoStart
-                  onScan={(t) => t && fetchTargetInfo(t)}
-                  onError={(e) => setFeedback(e.message)}
-                />
+               
               </div>
             </div>
 
