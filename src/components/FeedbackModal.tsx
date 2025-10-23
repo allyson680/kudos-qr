@@ -15,7 +15,7 @@ export default function FeedbackModal({ onClose, project, voterCode, voterCompan
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!rating) return onClose(); // Skip if no rating
+    if (!rating) return onClose(); // skip silently if no rating selected
     setBusy(true);
     try {
       await fetch("/api/feedback", {
@@ -29,29 +29,35 @@ export default function FeedbackModal({ onClose, project, voterCode, voterCompan
           note,
         }),
       });
-    } catch {}
-    onClose();
+    } catch (e) {
+      console.warn("Feedback error", e);
+    } finally {
+      setBusy(false);
+      onClose(); // ✅ close properly
+    }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-neutral-900 text-white p-6 shadow-2xl border border-white/10">
+      <div
+        className="w-full max-w-sm rounded-2xl bg-neutral-900 text-white p-6 shadow-2xl border border-white/10"
+        onClick={(e) => e.stopPropagation()} // prevent overlay click propagation
+      >
         <h3 className="text-lg font-semibold text-green-400">How’s this going?</h3>
-        <p className="mt-1 text-sm text-gray-300">
-          Quick 2-second rating. Comment optional.
-        </p>
+        <p className="mt-1 text-sm text-gray-300">Quick 2-second rating. Comment optional.</p>
 
-        <div className="mt-4 flex gap-2 justify-center">
+        {/* rating buttons */}
+        <div className="mt-4 flex justify-center gap-2">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
+              type="button"
               onClick={() => setRating(n)}
-              className={`h-10 w-10 rounded-full border font-medium ${
+              className={`h-10 w-10 rounded-full border font-medium transition ${
                 rating >= n
                   ? "bg-green-500 border-green-400 text-white"
                   : "bg-neutral-800 border-neutral-600 text-gray-300"
               }`}
-              aria-label={`${n} star${n > 1 ? "s" : ""}`}
             >
               {n}
             </button>
@@ -67,14 +73,17 @@ export default function FeedbackModal({ onClose, project, voterCode, voterCompan
           maxLength={600}
         />
 
-        <div className="mt-4 flex items-center justify-between">
+        <div className="mt-5 flex items-center justify-between">
           <button
+            type="button"
             className="text-sm text-gray-400 underline hover:text-gray-200"
             onClick={onClose}
+            disabled={busy}
           >
             Skip
           </button>
           <button
+            type="button"
             className="rounded-lg bg-green-600 px-4 py-2 text-white font-semibold hover:bg-green-500 disabled:opacity-50"
             onClick={submit}
             disabled={busy}
@@ -83,6 +92,9 @@ export default function FeedbackModal({ onClose, project, voterCode, voterCompan
           </button>
         </div>
       </div>
+
+      {/* click outside to close */}
+      <div className="absolute inset-0" onClick={onClose} />
     </div>
   );
 }
