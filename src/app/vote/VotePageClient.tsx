@@ -556,12 +556,17 @@ export default function VotePageClient() {
       <div ref={topRef} />
 
       {finding && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
-          <div className="rounded-xl bg-white px-5 py-4 text-center shadow-lg">
-            <p className="text-sm font-medium">Finding your account…</p>
-          </div>
-        </div>
-      )}
+  <div className="fixed inset-0 z-50 grid place-items-center bg-black/60">
+    <div className="rounded-xl bg-white px-6 py-5 text-center shadow-lg">
+      <p className="flex items-center justify-center gap-2 text-base font-semibold text-gray-900">
+  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-green-500"></span>
+  Finding your account…
+</p>
+
+    </div>
+  </div>
+)}
+
 
       <button
         className="px-4 rounded bg-black text-white disabled:opacity-50"
