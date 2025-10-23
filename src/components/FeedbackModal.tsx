@@ -1,4 +1,3 @@
-// src/components/FeedbackModal.tsx
 "use client";
 
 import { useState } from "react";

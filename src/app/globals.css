@@ -114,3 +114,12 @@ select.bg-neutral-900 option {
   background-size: 200% auto;
   animation: shimmer 3s linear infinite;
 }
+
+@keyframes topbar-sheen {
+  0% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+  100% { filter: brightness(1); }
+}
+.animate-topbar-sheen {
+  animation: topbar-sheen 1.2s ease-in-out infinite;
+}

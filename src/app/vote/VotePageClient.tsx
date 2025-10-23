@@ -10,9 +10,6 @@ import {
   getNextCompanyCapMessage,
 } from "@/lib/outOfTokens";
 
-// Lazy-load the feedback modal (no SSR)
-const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr: false });
-
 type Worker = { code: string; fullName: string; companyId: string };
 type Company = { id: string; name: string };
 
@@ -21,9 +18,21 @@ const WALSH_COMPANY_ID = "WALSH";
 type Step = "voter" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
+type FeedbackModalProps = {
+  onClose: () => void;
+  project: string;
+  voterCode: string;
+  voterCompanyId: string;
+};
+
+const FeedbackModal = dynamic<FeedbackModalProps>(
+  () => import("@/components/FeedbackModal").then(m => m.default),
+  { ssr: false }
+);
+
 /* ---------- helpers ---------- */
 
-// Pull code from raw text or URL-ish paste
+// Pull code from raw text, URL, or QR payload
 function extractStickerFromText(raw: string): string | null {
   if (!raw) return null;
   const t = raw.trim();
@@ -45,6 +54,7 @@ function extractStickerFromText(raw: string): string | null {
   return normalizeSticker(t);
 }
 
+// Treat bare prefixes as “too broad” so the list doesn’t explode
 function isGenericCodePrefix(str: string) {
   const t = (str || "").trim().toUpperCase();
   return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
@@ -66,37 +76,6 @@ async function readJsonSafe(res: Response) {
   }
 }
 
-// Local feedback gate (fallback if server doesn't tell us)
-const LS_VOTES_KEY = "fb_votesGiven";
-const LS_LAST_FB_KEY = "fb_lastFeedbackAt";
-function shouldPromptFeedbackLocal(): boolean {
-  try {
-    const now = Date.now();
-    const last = Number(localStorage.getItem(LS_LAST_FB_KEY) || "0");
-    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1; // increment optimistically
-    const twentyDays = 20 * 24 * 60 * 60 * 1000;
-    const timeOk = !last || now - last >= twentyDays;
-    const countOk = votes % 21 === 0;
-    // Don't persist yet; caller will persist when actually showing modal
-    return timeOk || countOk;
-  } catch {
-    return false;
-  }
-}
-function markFeedbackShownLocal() {
-  try {
-    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
-    localStorage.setItem(LS_VOTES_KEY, String(votes));
-    localStorage.setItem(LS_LAST_FB_KEY, String(Date.now()));
-  } catch {}
-}
-function incrementVotesWithoutPrompt() {
-  try {
-    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
-    localStorage.setItem(LS_VOTES_KEY, String(votes));
-  } catch {}
-}
-
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
@@ -104,12 +83,19 @@ export default function VotePageClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
+
+  // 🌟 NEW: boot/loading state for first paint
+  const [booting, setBooting] = useState(true);
+  const [bootMsg, setBootMsg] = useState("Loading…");
+
   // Callouts
   const [selfCallout, setSelfCallout] = useState("");
   const [sameCompanyCallout, setSameCompanyCallout] = useState("");
 
   const showNoSelf = useCallback(() => {
-    setSelfCallout("No self-voting! Please choose a deserving coworker instead.");
+    setSelfCallout(
+      "No self-voting! Please choose a deserving coworker instead."
+    );
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
@@ -118,7 +104,9 @@ export default function VotePageClient() {
   }, []);
 
   const showNoSameCompany = useCallback(() => {
-    setSameCompanyCallout("No same-company voting! Please pick someone from a different company.");
+    setSameCompanyCallout(
+      "No same-company voting! Please pick someone from a different company."
+    );
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
@@ -127,7 +115,9 @@ export default function VotePageClient() {
   }, []);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as "token" | "goodCatch";
+  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
+    | "token"
+    | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -135,7 +125,10 @@ export default function VotePageClient() {
   const [voterCode, setVoterCode] = useState(voterFromQS);
   const [voterName, setVoterName] = useState("");
   const [voterCompanyId, setVoterCompanyId] = useState("");
-  const voterProject = useMemo(() => (voterCode ? getProjectFromCode(voterCode) : "NBK"), [voterCode]);
+  const voterProject = useMemo(
+    () => (voterCode ? getProjectFromCode(voterCode) : "NBK"),
+    [voterCode]
+  );
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
 
   // token type (Walsh only)
@@ -152,18 +145,21 @@ export default function VotePageClient() {
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // scanner overlay control
+  const [scanOpen, setScanOpen] = useState(false);
   const [msg, setMsg] = useState("");
 
   // lock state
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
-  // feedback modal
-  const [showFeedback, setShowFeedback] = useState(false);
-
   const lockOut = (kind: LockKind = "daily") => {
     setDailyLocked(true);
-    setLockMsg(kind === "company" ? getNextCompanyCapMessage() : getNextOutOfTokensMessage());
+    setLockMsg(
+      kind === "company"
+        ? getNextCompanyCapMessage()
+        : getNextOutOfTokensMessage()
+    );
   };
 
   async function apiLookup(code: string): Promise<Worker | null> {
@@ -178,13 +174,21 @@ export default function VotePageClient() {
     try {
       const sp = new URLSearchParams({ voter });
       if (companyId) sp.set("companyId", companyId);
-      const r = await fetch(`/api/vote/limits?${sp.toString()}`, { cache: "no-store" });
+      const r = await fetch(`/api/vote/limits?${sp.toString()}`, {
+        cache: "no-store",
+      });
       const j: any = await readJsonSafe(r);
 
-      const daily = Number.isFinite(+j?.dailyRemaining) ? +j.dailyRemaining : Infinity;
-      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining) ? +j.companyMonthlyRemaining : Infinity;
+      const daily = Number.isFinite(+j?.dailyRemaining)
+        ? +j.dailyRemaining
+        : Infinity;
+      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining)
+        ? +j.companyMonthlyRemaining
+        : Infinity;
       const companyAny =
-        Number.isFinite(+j?.companyRemaining) && +j.companyRemaining >= 0 ? +j.companyRemaining : companyMonthly;
+        Number.isFinite(+j?.companyRemaining) && +j.companyRemaining >= 0
+          ? +j.companyRemaining
+          : companyMonthly;
 
       if (companyAny <= 0) {
         lockOut("company");
@@ -216,6 +220,7 @@ export default function VotePageClient() {
       if (!w) {
         setVoterName("");
         setVoterCompanyId("");
+        setScanOpen(false);
         setMsg("We didn’t find your code. Redirecting to register…");
         setTimeout(() => router.push(`/k/${code}`), 300);
         return;
@@ -226,6 +231,7 @@ export default function VotePageClient() {
       await checkLimits(code, w.companyId);
 
       setStep("target");
+      setScanOpen(false);
     },
     [router]
   );
@@ -247,7 +253,9 @@ export default function VotePageClient() {
 
       const w = await apiLookup(code);
       if (!w) {
-        setMsg("We couldn't find that sticker. Ask your coworker to register first.");
+        setMsg(
+          "We couldn't find that sticker. Ask your coworker to register first."
+        );
         return;
       }
 
@@ -260,6 +268,7 @@ export default function VotePageClient() {
       setSameCompanyCallout("");
       setTargetCode(code);
       setTargetName(w.fullName ?? "");
+      setScanOpen(false);
       setStep("confirm");
     },
     [voterProject, voterCode, voterCompanyId, showNoSelf, showNoSameCompany]
@@ -283,20 +292,7 @@ export default function VotePageClient() {
         const name = (json.target?.fullName || targetName || "").trim();
         setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
         setStep("done");
-
-        // --- Feedback gating:
-        // Prefer server signal; fallback to local cadence (21st vote or ≥20 days)
-        const serverSays = Boolean(json?.promptFeedback);
-        const localSays = shouldPromptFeedbackLocal();
-
-        if (serverSays || localSays) {
-          // Persist local counters only when actually showing the modal
-          markFeedbackShownLocal();
-          setShowFeedback(true);
-        } else {
-          // Still increment local vote count to stay in sync
-          incrementVotesWithoutPrompt();
-        }
+        setScanOpen(false);
         return;
       }
 
@@ -304,27 +300,34 @@ export default function VotePageClient() {
       if (json?.code === "SAME_COMPANY" || (err.includes("same") && err.includes("company"))) {
         showNoSameCompany();
         setStep("target");
+        setScanOpen(false);
         return;
       }
       if (json?.code === "DAILY_LIMIT" || (err.includes("daily") && err.includes("limit"))) {
         lockOut("daily");
         return;
       }
-      if (json?.code === "COMPANY_MONTHLY_LIMIT" || (err.includes("company") && (err.includes("monthly") || err.includes("limit")))) {
+      if (
+        json?.code === "COMPANY_MONTHLY_LIMIT" ||
+        (err.includes("company") && (err.includes("monthly") || err.includes("limit")))
+      ) {
         lockOut("company");
         return;
       }
       if (err.includes("self")) {
         showNoSelf();
         setStep("target");
+        setScanOpen(false);
         return;
       }
 
       setMsg(json?.error || "Error");
       setStep("target");
+      setScanOpen(false);
     } catch (e: any) {
       setMsg(e?.message || "Network error");
       setStep("target");
+      setScanOpen(false);
     }
   }
 
@@ -337,25 +340,43 @@ export default function VotePageClient() {
     setMsg("");
   }, [query, filterCompanyId]);
 
-  // If landing with voter=?, pre-check limits
+  // Close camera when not on a scanning step
   useEffect(() => {
-    if (voterFromQS) checkLimits(voterFromQS);
-  }, [voterFromQS]);
+    if (step === "confirm" || step === "done") setScanOpen(false);
+  }, [step]);
 
-  // If voter from QS isn’t registered, send to /k/<code>
+  // 🌟 NEW: boot flow — show loading while checking voterFromQS
   useEffect(() => {
-    if (!voterFromQS) return;
+    let mounted = true;
+
     (async () => {
-      const w = await apiLookup(voterFromQS);
-      if (!w) {
-        router.replace(`/k/${voterFromQS}`);
-        return;
+      if (voterFromQS) {
+        setBootMsg("Finding your account…");
+        setBooting(true);
+        const w = await apiLookup(voterFromQS);
+        if (!mounted) return;
+
+        if (!w) {
+          router.replace(`/k/${voterFromQS}`);
+          return; // page will change; no need to clear boot
+        }
+
+        setVoterCode(voterFromQS);
+        setVoterName(w.fullName ?? "");
+        setVoterCompanyId(w.companyId ?? "");
+        await checkLimits(voterFromQS, w.companyId);
+        setStep("target");
+        setBooting(false);
+      } else {
+        // No query param: brief grace so users still see a smooth boot
+        setBootMsg("Loading…");
+        setTimeout(() => mounted && setBooting(false), 250);
       }
-      setVoterCode(voterFromQS);
-      setVoterName(w.fullName ?? "");
-      setVoterCompanyId(w.companyId ?? "");
-      setStep("target");
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, [voterFromQS, router]);
 
   // Load companies on target step (filter dropdown shows ALL companies from DB)
@@ -377,7 +398,6 @@ export default function VotePageClient() {
     const q = (query || "").trim();
     const tooBroad = isGenericCodePrefix(q);
 
-    // If no company filter and query is too short or just NBK/JP, don't fetch
     if (!filterCompanyId && (q.length < 3 || tooBroad)) {
       setResults([]);
       setIsSearching(false);
@@ -391,11 +411,10 @@ export default function VotePageClient() {
         const params = new URLSearchParams();
         if (filterCompanyId) params.set("companyId", filterCompanyId);
 
-        const qTrim = q; // already trimmed above
+        const qTrim = q;
         if (qTrim) {
           params.set("q", qTrim);
         } else if (filterCompanyId && !qTrim) {
-          // ensure we still get results when only a company is selected
           params.set("q", "*");
         }
 
@@ -428,12 +447,27 @@ export default function VotePageClient() {
     if (!hasFilter && !hasLongEnoughQuery) return;
     if (!results || results.length === 0) return;
 
-    const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    const y =
+      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
     window.scrollTo({ top: y, behavior: "smooth" });
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [step, filterCompanyId, query, isSearching, results.length]);
 
+  // Stable scan callbacks
+  const onVoterScan = useCallback((t: string | null) => t && setVoter(t), [setVoter]);
+  const onTargetScan = useCallback((t: string | null) => t && setTarget(t), [setTarget]);
+
   /* ---------- UI ---------- */
+
+  // 🌟 NEW: full-screen boot loading
+  if (booting) {
+    return (
+      <main className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center">
+        <div className="mb-4 h-10 w-10 rounded-full border-4 border-emerald-400/40 border-t-emerald-500 animate-spin" />
+        <p className="text-sm text-gray-600">{bootMsg}</p>
+      </main>
+    );
+  }
 
   if (dailyLocked) {
     return (
@@ -447,12 +481,13 @@ export default function VotePageClient() {
     );
   }
 
+  function setShowFeedback(arg0: boolean): void {
+    throw new Error("Function not implemented.");
+  }
+
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
-      <h1 className="text-4xl font-extrabold text-center mt-4 bg-gradient-to-r from-green-400 via-emerald-500 to-green-300 bg-clip-text text-transparent animate-shimmer">
-  Tokens of Excellence
-</h1>
-
+      <h1 className="text-xl font-semibold text-center">Vote</h1>
       <div ref={topRef} />
 
       {/* Big callouts */}
@@ -463,7 +498,10 @@ export default function VotePageClient() {
         >
           {selfCallout}
           <div className="mt-1">
-            <button className="text-xs underline" onClick={() => setSelfCallout("")}>
+            <button
+              className="text-xs underline"
+              onClick={() => setSelfCallout("")}
+            >
               Dismiss
             </button>
           </div>
@@ -477,12 +515,18 @@ export default function VotePageClient() {
         >
           {sameCompanyCallout}
           <div className="mt-1">
-            <button className="text-xs underline" onClick={() => setSameCompanyCallout("")}>
+            <button
+              className="text-xs underline"
+              onClick={() => setSameCompanyCallout("")}
+            >
               Dismiss
             </button>
           </div>
         </div>
       )}
+
+      {/* ...the rest of your component stays the same... */}
+
 
       {/* STEP 1 — voter */}
       {step === "voter" && (
@@ -730,14 +774,14 @@ export default function VotePageClient() {
       )}
 
       {/* Feedback modal (conditionally shown) */}
-      {showFeedback && (
-        <FeedbackModal
-          onClose={() => setShowFeedback(false)}
-          project={voterProject}
-          voterCode={voterCode}
-          voterCompanyId={voterCompanyId}
-        />
-      )}
+      {setShowFeedback && (
+  <FeedbackModal
+    onClose={() => setShowFeedback(false)}
+    project={voterProject}
+    voterCode={voterCode}
+    voterCompanyId={voterCompanyId}
+  />
+)}
     </main>
   );
 }
