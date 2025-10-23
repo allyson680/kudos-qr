@@ -525,7 +525,7 @@ export default function VotePageClient() {
             {/* Token choice ONLY here, with extra spacing & dimming */}
             {isWalsh ? (
               <>
-                <div className="mt-4 mb-2 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
+                <div className="mt-6 mb-4 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
                   <TypeBadge
                     type="token"
                     size="md"

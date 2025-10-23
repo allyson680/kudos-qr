@@ -92,9 +92,9 @@ select.bg-neutral-900 option {
     rgba(255,255,255,0) 100%
   );
   background-size: 240% 100%;
-  animation: tokenShimmer var(--shimmer-duration, 2.2s) linear infinite;
+  animation: tokenShimmer var(--shimmer-duration, 5s) linear infinite;
   /* each badge gets its own delay via inline var */
-  animation-delay: var(--shimmer-delay, 0s);
+  animation-delay: var(--shimmer-delay, .5s);
   mix-blend-mode: overlay;
   border-radius: 9999px;
   pointer-events: none;
