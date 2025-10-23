@@ -44,7 +44,8 @@ function extractStickerFromText(raw: string): string | null {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
-    if (kIdx !== -1 && parts[kIdx + 1]) return normalizeSticker(parts[kIdx + 1]);
+    if (kIdx !== -1 && parts[kIdx + 1])
+      return normalizeSticker(parts[kIdx + 1]);
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
     if (qp) return normalizeSticker(qp);
   } catch {
@@ -98,7 +99,6 @@ function shouldPromptFeedbackLocal(): boolean {
   }
 } */
 
-
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
@@ -106,10 +106,10 @@ export default function VotePageClient() {
   const topRef = useRef<HTMLDivElement | null>(null);
   const resultsRef = useRef<HTMLDivElement | null>(null);
 
-
   // 🌟 NEW: boot/loading state for first paint
   const [booting, setBooting] = useState(true);
   const [bootMsg, setBootMsg] = useState("Loading…");
+  const [finding, setFinding] = useState(false);
 
   // Callouts
   const [selfCallout, setSelfCallout] = useState("");
@@ -138,9 +138,9 @@ export default function VotePageClient() {
   }, []);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
-    | "token"
-    | "goodCatch";
+  const typeFromQS = (
+    qs.get("type") === "goodCatch" ? "goodCatch" : "token"
+  ) as "token" | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -237,24 +237,26 @@ export default function VotePageClient() {
       const code = extractStickerFromText(raw);
       if (!code) return;
 
-      setVoterCode(code);
-      const w = await apiLookup(code);
+      setFinding(true); // ⬅️ start loading
+      try {
+        setVoterCode(code);
+        const w = await apiLookup(code);
 
-      if (!w) {
-        setVoterName("");
-        setVoterCompanyId("");
-        setScanOpen(false);
-        setMsg("We didn’t find your code. Redirecting to register…");
-        setTimeout(() => router.push(`/k/${code}`), 300);
-        return;
+        if (!w) {
+          setVoterName("");
+          setVoterCompanyId("");
+          setMsg("We didn’t find your code. Redirecting to register…");
+          setTimeout(() => router.push(`/k/${code}`), 300);
+          return;
+        }
+
+        setVoterName(w.fullName ?? "");
+        setVoterCompanyId(w.companyId ?? "");
+        await checkLimits(code, w.companyId);
+        setStep("target");
+      } finally {
+        setFinding(false); // ⬅️ stop loading
       }
-
-      setVoterName(w.fullName ?? "");
-      setVoterCompanyId(w.companyId ?? "");
-      await checkLimits(code, w.companyId);
-
-      setStep("target");
-      setScanOpen(false);
     },
     [router]
   );
@@ -298,87 +300,95 @@ export default function VotePageClient() {
   );
 
   async function submitVote() {
-  setMsg("");
-  try {
-    const body: any = { voterCode, targetCode };
-    if (isWalsh) body.voteType = voteType;
+    setMsg("");
+    try {
+      const body: any = { voterCode, targetCode };
+      if (isWalsh) body.voteType = voteType;
 
-    const res = await fetch("/api/vote", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const json: any = await readJsonSafe(res);
+      const res = await fetch("/api/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json: any = await readJsonSafe(res);
 
-    if (json?.ok) {
-      const code = json.target?.code || targetCode;
-      const name = (json.target?.fullName || targetName || "").trim();
-      setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
-      setStep("done");
-      setScanOpen(false);
+      if (json?.ok) {
+        const code = json.target?.code || targetCode;
+        const name = (json.target?.fullName || targetName || "").trim();
+        setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
+        setStep("done");
+        setScanOpen(false);
 
-      // ---------- FEEDBACK GATE ----------
-      try {
-  const KEY_VOTES = "fb_votesGiven";
-  const KEY_LAST  = "fb_lastFeedbackAt";
+        // ---------- FEEDBACK GATE ----------
+        try {
+          const KEY_VOTES = "fb_votesGiven";
+          const KEY_LAST = "fb_lastFeedbackAt";
 
-  const prevVotes = Number(localStorage.getItem(KEY_VOTES) || "0");
-  const votes = prevVotes + 1; // increment for this vote
-  const last  = Number(localStorage.getItem(KEY_LAST) || "0");
-  const twentyDays = 20 * 24 * 60 * 60 * 1000;
+          const prevVotes = Number(localStorage.getItem(KEY_VOTES) || "0");
+          const votes = prevVotes + 1; // increment for this vote
+          const last = Number(localStorage.getItem(KEY_LAST) || "0");
+          const twentyDays = 20 * 24 * 60 * 60 * 1000;
 
-  const serverSays = json?.promptFeedback === true; // only your API can force it
-  const countOk = votes % 21 === 0 && votes > 0;     // 21, 42, 63, ...
-  const timeOk  = last > 0 && (Date.now() - last) >= twentyDays;
+          const serverSays = json?.promptFeedback === true; // only your API can force it
+          const countOk = votes % 21 === 0 && votes > 0; // 21, 42, 63, ...
+          const timeOk = last > 0 && Date.now() - last >= twentyDays;
 
-  if (serverSays || countOk || timeOk) {
-    // persist only when showing the modal
-    localStorage.setItem(KEY_VOTES, String(votes));
-    localStorage.setItem(KEY_LAST,  String(Date.now()));
-    setShowFeedback(true);
-  } else {
-    // quietly persist the vote count but don't open the modal
-    localStorage.setItem(KEY_VOTES, String(votes));
-  }
-} catch {}
-      // -----------------------------------
+          if (serverSays || countOk || timeOk) {
+            // persist only when showing the modal
+            localStorage.setItem(KEY_VOTES, String(votes));
+            localStorage.setItem(KEY_LAST, String(Date.now()));
+            setShowFeedback(true);
+          } else {
+            // quietly persist the vote count but don't open the modal
+            localStorage.setItem(KEY_VOTES, String(votes));
+          }
+        } catch {}
+        // -----------------------------------
 
-      return;
-    }
+        return;
+      }
 
-    const err = String(json?.error || "").toLowerCase();
-    if (json?.code === "SAME_COMPANY" || (err.includes("same") && err.includes("company"))) {
-      showNoSameCompany();
+      const err = String(json?.error || "").toLowerCase();
+      if (
+        json?.code === "SAME_COMPANY" ||
+        (err.includes("same") && err.includes("company"))
+      ) {
+        showNoSameCompany();
+        setStep("target");
+        setScanOpen(false);
+        return;
+      }
+      if (
+        json?.code === "DAILY_LIMIT" ||
+        (err.includes("daily") && err.includes("limit"))
+      ) {
+        lockOut("daily");
+        return;
+      }
+      if (
+        json?.code === "COMPANY_MONTHLY_LIMIT" ||
+        (err.includes("company") &&
+          (err.includes("monthly") || err.includes("limit")))
+      ) {
+        lockOut("company");
+        return;
+      }
+      if (err.includes("self")) {
+        showNoSelf();
+        setStep("target");
+        setScanOpen(false);
+        return;
+      }
+
+      setMsg(json?.error || "Error");
       setStep("target");
       setScanOpen(false);
-      return;
-    }
-    if (json?.code === "DAILY_LIMIT" || (err.includes("daily") && err.includes("limit"))) {
-      lockOut("daily");
-      return;
-    }
-    if (json?.code === "COMPANY_MONTHLY_LIMIT" ||
-        (err.includes("company") && (err.includes("monthly") || err.includes("limit")))) {
-      lockOut("company");
-      return;
-    }
-    if (err.includes("self")) {
-      showNoSelf();
+    } catch (e: any) {
+      setMsg(e?.message || "Network error");
       setStep("target");
       setScanOpen(false);
-      return;
     }
-
-    setMsg(json?.error || "Error");
-    setStep("target");
-    setScanOpen(false);
-  } catch (e: any) {
-    setMsg(e?.message || "Network error");
-    setStep("target");
-    setScanOpen(false);
   }
-}
-
 
   /* ---------- effects ---------- */
 
@@ -503,8 +513,14 @@ export default function VotePageClient() {
   }, [step, filterCompanyId, query, isSearching, results.length]);
 
   // Stable scan callbacks
-  const onVoterScan = useCallback((t: string | null) => t && setVoter(t), [setVoter]);
-  const onTargetScan = useCallback((t: string | null) => t && setTarget(t), [setTarget]);
+  const onVoterScan = useCallback(
+    (t: string | null) => t && setVoter(t),
+    [setVoter]
+  );
+  const onTargetScan = useCallback(
+    (t: string | null) => t && setTarget(t),
+    [setTarget]
+  );
 
   /* ---------- UI ---------- */
 
@@ -538,6 +554,22 @@ export default function VotePageClient() {
     <main className="p-4 max-w-md mx-auto space-y-4">
       <h1 className="text-xl font-semibold text-center">Vote</h1>
       <div ref={topRef} />
+
+      {finding && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/40">
+          <div className="rounded-xl bg-white px-5 py-4 text-center shadow-lg">
+            <p className="text-sm font-medium">Finding your account…</p>
+          </div>
+        </div>
+      )}
+
+      <button
+        className="px-4 rounded bg-black text-white disabled:opacity-50"
+        type="submit"
+        disabled={finding}
+      >
+        {finding ? "Please wait…" : "Next"}
+      </button>
 
       {/* Big callouts */}
       {selfCallout && (
@@ -576,7 +608,6 @@ export default function VotePageClient() {
 
       {/* ...the rest of your component stays the same... */}
 
-
       {/* STEP 1 — voter */}
       {step === "voter" && (
         <section className="space-y-3">
@@ -612,7 +643,8 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
             <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
+              Hello <b>{voterName || voterCode}</b>, who would you like to give
+              a virtual token to?
             </p>
 
             {/* Token choice ONLY here, with extra spacing & dimming */}
@@ -719,9 +751,14 @@ export default function VotePageClient() {
               ) : results.length ? (
                 <ul className="divide-y border rounded">
                   {results.map((w) => (
-                    <li key={w.code} className="flex items-center justify-between p-2">
+                    <li
+                      key={w.code}
+                      className="flex items-center justify-between p-2"
+                    >
                       <div>
-                        <div className="font-medium">{w.fullName || "(no name yet)"}</div>
+                        <div className="font-medium">
+                          {w.fullName || "(no name yet)"}
+                        </div>
                         <div className="text-xs text-gray-600">{w.code}</div>
                       </div>
                       <button
@@ -760,11 +797,13 @@ export default function VotePageClient() {
               ) : null}
 
               {/* Hint if user typed only NBK/JP */}
-              {!isSearching && !filterCompanyId && isGenericCodePrefix(query) && (
-                <p className="text-sm text-gray-500 mt-2">
-                  Add a few digits after NBK/JP (e.g. NBK12) or type a name.
-                </p>
-              )}
+              {!isSearching &&
+                !filterCompanyId &&
+                isGenericCodePrefix(query) && (
+                  <p className="text-sm text-gray-500 mt-2">
+                    Add a few digits after NBK/JP (e.g. NBK12) or type a name.
+                  </p>
+                )}
             </div>
           </div>
 
@@ -777,7 +816,9 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
-              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              Confirm token is for{" "}
+              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>
+              ?
             </p>
           </div>
           <div className="flex gap-2">
@@ -789,7 +830,10 @@ export default function VotePageClient() {
             >
               Cancel
             </button>
-            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
+            <button
+              className="flex-1 py-2 rounded bg-black text-white"
+              onClick={submitVote}
+            >
               Confirm
             </button>
           </div>
@@ -821,8 +865,6 @@ export default function VotePageClient() {
           </div>
         </section>
       )}
-
-     
     </main>
   );
 }

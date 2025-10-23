@@ -21,6 +21,24 @@ export default function TypeBadge({
 }: Props) {
   const isToken = type === "token";
 
+  const textSizing =
+  size === "lg"
+    ? "text-xs md:text-sm"          // large coin
+    : "text-[10px] md:text-xs";     // medium coin (smaller so it never spills)
+
+    <span className={`leading-tight tracking-wide ${textSizing} ${isToken ? "text-white" : "text-emerald-800"}`}>
+  {isToken ? (
+    <>
+      TOKEN<br />OF<br />EXCELLENCE
+    </>
+  ) : (
+    <>
+      GOOD<br />CATCH
+    </>
+  )}
+</span>
+
+
   // Physical footprint stays constant; we only scale with transform.
   const dims = size === "lg" ? "w-32 h-32 md:w-36 md:h-36" : "w-24 h-24";
 
