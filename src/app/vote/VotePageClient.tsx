@@ -26,7 +26,7 @@ type FeedbackModalProps = {
 };
 
 const FeedbackModal = dynamic<FeedbackModalProps>(
-  () => import("@/components/FeedbackModal").then(m => m.default),
+  () => import("@/components/FeedbackModal"),
   { ssr: false }
 );
 
@@ -85,13 +85,11 @@ function shouldPromptFeedbackLocal(): boolean {
     const now = Date.now();
     const last = Number(localStorage.getItem(LS_LAST_FB_KEY) || "0");
     const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
-
     const twentyDays = 20 * 24 * 60 * 60 * 1000;
 
-    // Only show after the 2nd vote minimum
-    if (votes < 2) return false;
+    if (votes < 2) return false; // never on first vote
 
-    const countOk = votes > 0 && votes % 21 === 0;
+    const countOk = votes % 21 === 0;
     const timeOk = last > 0 && now - last >= twentyDays;
 
     return countOk || timeOk;
@@ -99,6 +97,7 @@ function shouldPromptFeedbackLocal(): boolean {
     return false;
   }
 }
+
 
 export default function VotePageClient() {
   const qs = useSearchParams();
@@ -299,61 +298,86 @@ export default function VotePageClient() {
   );
 
   async function submitVote() {
-    setMsg("");
-    try {
-      const body: any = { voterCode, targetCode };
-      if (isWalsh) body.voteType = voteType;
+  setMsg("");
+  try {
+    const body: any = { voterCode, targetCode };
+    if (isWalsh) body.voteType = voteType;
 
-      const res = await fetch("/api/vote", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const json: any = await readJsonSafe(res);
+    const res = await fetch("/api/vote", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json: any = await readJsonSafe(res);
 
-      if (json?.ok) {
-        const code = json.target?.code || targetCode;
-        const name = (json.target?.fullName || targetName || "").trim();
-        setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
-        setStep("done");
-        setScanOpen(false);
-        return;
-      }
-
-      const err = String(json?.error || "").toLowerCase();
-      if (json?.code === "SAME_COMPANY" || (err.includes("same") && err.includes("company"))) {
-        showNoSameCompany();
-        setStep("target");
-        setScanOpen(false);
-        return;
-      }
-      if (json?.code === "DAILY_LIMIT" || (err.includes("daily") && err.includes("limit"))) {
-        lockOut("daily");
-        return;
-      }
-      if (
-        json?.code === "COMPANY_MONTHLY_LIMIT" ||
-        (err.includes("company") && (err.includes("monthly") || err.includes("limit")))
-      ) {
-        lockOut("company");
-        return;
-      }
-      if (err.includes("self")) {
-        showNoSelf();
-        setStep("target");
-        setScanOpen(false);
-        return;
-      }
-
-      setMsg(json?.error || "Error");
-      setStep("target");
+    if (json?.ok) {
+      const code = json.target?.code || targetCode;
+      const name = (json.target?.fullName || targetName || "").trim();
+      setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
+      setStep("done");
       setScanOpen(false);
-    } catch (e: any) {
-      setMsg(e?.message || "Network error");
-      setStep("target");
-      setScanOpen(false);
+
+      // ---------- FEEDBACK GATE ----------
+      try {
+        const KEY_VOTES = "fb_votesGiven";
+        const KEY_LAST  = "fb_lastFeedbackAt";
+        const prevVotes = Number(localStorage.getItem(KEY_VOTES) || "0");
+        const votes = prevVotes + 1;                   // increment for this vote
+        const last  = Number(localStorage.getItem(KEY_LAST) || "0");
+        const twentyDays = 20 * 24 * 60 * 60 * 1000;
+
+        const serverSays = json?.promptFeedback === true; // only true forces it
+        const countOk = votes % 21 === 0 && votes > 0;    // 21, 42, 63...
+        const timeOk  = last > 0 && Date.now() - last >= twentyDays;
+
+        if (serverSays || countOk || timeOk) {
+          // persist only when showing the modal
+          localStorage.setItem(KEY_VOTES, String(votes));
+          localStorage.setItem(KEY_LAST, String(Date.now()));
+          setShowFeedback(true);
+        } else {
+          // quietly persist votes but don't open the modal
+          localStorage.setItem(KEY_VOTES, String(votes));
+        }
+      } catch {}
+      // -----------------------------------
+
+      return;
     }
+
+    const err = String(json?.error || "").toLowerCase();
+    if (json?.code === "SAME_COMPANY" || (err.includes("same") && err.includes("company"))) {
+      showNoSameCompany();
+      setStep("target");
+      setScanOpen(false);
+      return;
+    }
+    if (json?.code === "DAILY_LIMIT" || (err.includes("daily") && err.includes("limit"))) {
+      lockOut("daily");
+      return;
+    }
+    if (json?.code === "COMPANY_MONTHLY_LIMIT" ||
+        (err.includes("company") && (err.includes("monthly") || err.includes("limit")))) {
+      lockOut("company");
+      return;
+    }
+    if (err.includes("self")) {
+      showNoSelf();
+      setStep("target");
+      setScanOpen(false);
+      return;
+    }
+
+    setMsg(json?.error || "Error");
+    setStep("target");
+    setScanOpen(false);
+  } catch (e: any) {
+    setMsg(e?.message || "Network error");
+    setStep("target");
+    setScanOpen(false);
   }
+}
+
 
   /* ---------- effects ---------- */
 
