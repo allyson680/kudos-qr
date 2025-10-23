@@ -552,7 +552,7 @@ export default function VotePageClient() {
 
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
-      <h1 className="text-xl font-semibold text-center">Vote</h1>
+      <h1 className="text-xl font-semibold text-center">Virtual Token of Excellence</h1>
       <div ref={topRef} />
 
       {finding && (
