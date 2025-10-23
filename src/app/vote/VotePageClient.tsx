@@ -337,13 +337,12 @@ export default function VotePageClient() {
             // persist only when showing the modal
             localStorage.setItem(KEY_VOTES, String(votes));
             localStorage.setItem(KEY_LAST, String(Date.now()));
-            setShowFeedback(true);
           } else {
             // quietly persist the vote count but don't open the modal
             localStorage.setItem(KEY_VOTES, String(votes));
           }
         } catch {}
-        // -----------------------------------
+        
 
         return;
       }
@@ -454,38 +453,43 @@ useEffect(() => {
 }, [step]);
 
 
-  // Search workers (target step only) — with NBK/JP prefix guard
-  useEffect(() => {
-    if (step !== "target") return;
+  // Live search — starts after typing the first letter
+useEffect(() => {
+  if (step !== "target") return;
 
-    const q = (query || "").trim();
-    const tooBroad = isGenericCodePrefix(q);
+  const q = (query || "").trim();
+  const tooBroad = isGenericCodePrefix(q);
 
+  // ⛔️ if empty, too broad, or no filter → don’t show anything yet
+  if (!q || tooBroad) {
+    setResults([]);
+    setIsSearching(false);
+    return;
+  }
 
-    let cancelled = false;
-     const handle = setTimeout(async () => {
+  let cancelled = false;
+  setIsSearching(true);
+
+  // debounce small delay for smooth typing
+  const handle = setTimeout(async () => {
     try {
       const params = new URLSearchParams();
       if (filterCompanyId) params.set("companyId", filterCompanyId);
-
-      if (q) {
-        params.set("q", q); // 1+ char query allowed now
-      } else if (filterCompanyId && !q) {
-        // still list by company when only a company filter is chosen
-        params.set("q", "*");
-      }
+      params.set("q", q);
 
       const r = await fetch(`/api/admin/workers?${params.toString()}`, {
         cache: "no-store",
       });
       const j: any = await readJsonSafe(r);
-      if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
+      if (!cancelled) {
+        setResults(Array.isArray(j?.workers) ? j.workers : []);
+      }
     } catch {
       if (!cancelled) setResults([]);
     } finally {
       if (!cancelled) setIsSearching(false);
     }
-  }, 200); // 200–300ms feels good
+  }, 250);
 
   return () => {
     cancelled = true;
@@ -493,25 +497,6 @@ useEffect(() => {
   };
 }, [step, filterCompanyId, query]);
 
-
-  // AUTO-SCROLL when user types ≥3 chars or picks a company
-  // AUTO-SCROLL when results appear (do NOT blur the input)
-useEffect(() => {
-  if (step !== "target") return;
-  if (isSearching) return;
-  if (!resultsRef.current) return;
-
-  const hasFilter = !!filterCompanyId;
-  const hasAnyQuery = query.trim().length >= 1;
-
-  if (!hasFilter && !hasAnyQuery) return;
-  if (!results || results.length === 0) return;
-
-  const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
-  window.scrollTo({ top: y, behavior: "smooth" });
-
-  // ⛔️ removed: (document.activeElement as HTMLElement | null)?.blur?.();
-}, [step, filterCompanyId, query, isSearching, results.length]);
   // Stable scan callbacks
   const onVoterScan = useCallback(
     (t: string | null) => t && setVoter(t),
@@ -545,12 +530,12 @@ useEffect(() => {
       </main>
     );
   }
-
-  function setShowFeedback(arg0: boolean): void {
-    throw new Error("Function not implemented.");
-  }
-
-  return (
+function filterCompanyOrQueryMessage() {
+  return filterCompanyId && !query.trim()
+    ? "Start typing a name or code (filtered by company)…"
+    : "No matches found.";
+}
+    return (
     <main className="p-4 max-w-md mx-auto space-y-4">
       <div ref={topRef} />
 
@@ -736,73 +721,65 @@ useEffect(() => {
                 ))}
               </select>
             </form>
+          </div>  
 
             {/* Results (auto-scroll target) */}
-            <div ref={resultsRef}>
-              {isSearching ? (
-                <p className="text-sm text-gray-500">Searching…</p>
-              ) : results.length ? (
-                <ul className="divide-y border rounded">
-                  {results.map((w) => (
-                    <li
-                      key={w.code}
-                      className="flex items-center justify-between p-2"
-                    >
-                      <div>
-                        <div className="font-medium">
-                          {w.fullName || "(no name yet)"}
-                        </div>
-                        <div className="text-xs text-gray-600">{w.code}</div>
-                      </div>
-                      <button
-                        className="px-3 py-1 rounded bg-black text-white"
-                        onClick={() => {
-                          if (getProjectFromCode(w.code) !== voterProject) {
-                            setMsg("Same-project only (NBK→NBK, JP→JP)");
-                            return;
-                          }
-                          if (w.companyId === voterCompanyId) {
-                            showNoSameCompany();
-                            return;
-                          }
-                          if (w.code === voterCode) {
-                            showNoSelf();
-                            return;
-                          }
-                          setTargetCode(w.code);
-                          setTargetName(w.fullName || "");
-                          setSelfCallout("");
-                          setSameCompanyCallout("");
-                          setStep("confirm");
-                        }}
-                      >
-                        Select
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : filterCompanyId || query.trim() ? (
-                <p className="text-sm text-gray-500">
-                  {filterCompanyId && !query.trim()
-                    ? "No employees registered yet for this company."
-                    : "No matches found."}
-                </p>
-              ) : null}
-
-              {/* Hint if user typed only NBK/JP */}
-              {!isSearching &&
-                !filterCompanyId &&
-                isGenericCodePrefix(query) && (
-                  <p className="text-sm text-gray-500 mt-2">
-                    Add a few digits after NBK/JP (e.g. NBK12) or type a name.
-                  </p>
-                )}
-            </div>
+           <div ref={resultsRef}>
+  {isSearching ? (
+    <p className="text-sm text-gray-500">Searching…</p>
+  ) : results.length > 0 ? (
+    <ul className="divide-y border rounded">
+      {results.map((w) => (
+        <li key={w.code} className="flex items-center justify-between p-2">
+          <div>
+            <div className="font-medium">{w.fullName || w.fullName || "(no name yet)"}</div>
+            <div className="text-xs texSt-gray-600">{w.code}</div>
           </div>
+          <button
+            className="px-3 py-1 rounded bg-black text-white"
+            onClick={() => {
+              if (getProjectFromCode(w.code) !== voterProject) {
+                setMsg("Same-project only (NBK→NBK, JP→JP)");
+                return;
+              }
+              if (w.companyId === voterCompanyId) {
+                showNoSameCompany();
+                return;
+              }
+              if (w.code === voterCode) {
+                showNoSelf();
+                return;
+              }
+              setTargetCode(w.code);
+              setTargetName(w.fullName || w.fullName || "");
+              setSelfCallout("");
+              setSameCompanyCallout("");
+              setStep("confirm");
+            }}
+          >
+            Select
+          </button>
+        </li>
+      ))}
+    </ul>
+  ) : !query.trim() ? (
+    // nothing typed yet → show a gentle prompt (no list)
+    <p className="text-sm text-gray-500">Start typing a name or code to see results…</p>
+  ) : isGenericCodePrefix(query) && !filterCompanyId ? (
+    // user typed just NBK / JP / NBK- / JP-
+    <p className="text-sm text-gray-500 mt-2">
+      Add a few digits after NBK/JP (e.g. NBK12) or type a name.
+    </p>
+  ) : (
+    // user typed something but no matches
+    <p className="text-sm text-gray-500">
+      {filterCompanyOrQueryMessage()}
+    </p>
+  )}
+</div>
+</section>
+)}
 
-          {msg && <p className="text-sm text-center">{msg}</p>}
-        </section>
-      )}
 
       {/* STEP 3 — confirm (no badges here) */}
       {step === "confirm" && (
