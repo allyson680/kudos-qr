@@ -607,7 +607,7 @@ export default function VotePageClient() {
       {/* STEP 1 — voter */}
       {step === "voter" && (
         <section className="space-y-3">
-          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
+          <div className="p-3 text-white">
             <p className="text-sm">Enter your code to start.</p>
           </div>
 
