@@ -46,6 +46,10 @@ export async function GET(req: NextRequest) {
   try {
     const raw = req.nextUrl.searchParams.get("code") || "";
     const code = normalizeSticker(raw); // NBK1 -> NBK0001
+    const workers = db.collection("workers");
+const byId = await workers.doc(code).get();
+
+
 
     // load companies
     const companiesSnap = await db.collection("companies").get();
