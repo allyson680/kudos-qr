@@ -449,7 +449,10 @@ export default function VotePageClient() {
 
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
-      <h1 className="text-xl font-semibold text-center">Vote</h1>
+      <h1 className="text-4xl font-extrabold text-center mt-4 bg-gradient-to-r from-green-400 via-emerald-500 to-green-300 bg-clip-text text-transparent animate-shimmer">
+  Tokens of Excellence
+</h1>
+
       <div ref={topRef} />
 
       {/* Big callouts */}
