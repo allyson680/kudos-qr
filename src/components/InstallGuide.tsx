@@ -146,7 +146,6 @@ export default function InstallGuide() {
         <section className="rounded-2xl border p-4 space-y-3">
           <h2 className="font-medium">iPhone / iPad (Safari)</h2>
           <ol className="list-decimal pl-5 space-y-2 text-sm text-gray-700">
-            <li>Open this page in <b>Safari</b> (not in-app browsers).</li>
             <li>
               Tap <b>Share</b> <span aria-hidden>（□↑）</span> in the toolbar.
             </li>

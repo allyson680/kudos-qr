@@ -1,6 +1,5 @@
 "use client";
 
-import QRScanner from "@/Company/QRScanner";
 
 import { trySyncVotes } from "@/lib/syncVotes";
 import { useState } from "react";
@@ -23,7 +22,6 @@ export default function KudosScannerPage() {
   return (
     <main className="p-4">
       <h1 className="text-xl font-semibold mb-4">Scan a Kudos QR Code</h1>
-      <QRScanner onScan={handleScan} />
       {lastScan && (
         <p className="mt-4 text-green-600">✅ Last scan: {lastScan}</p>
       )}

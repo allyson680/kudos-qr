@@ -10,18 +10,20 @@ import {
   getNextCompanyCapMessage,
 } from "@/lib/outOfTokens";
 
+// Lazy-load the feedback modal (no SSR)
+const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr: false });
+
 type Worker = { code: string; fullName: string; companyId: string };
 type Company = { id: string; name: string };
 
 const WALSH_COMPANY_ID = "WALSH";
-const QrScanner = dynamic(() => import("@/Company/QRScanner"), { ssr: false });
 
 type Step = "voter" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
 /* ---------- helpers ---------- */
 
-// Pull code from raw text, URL, or QR payload
+// Pull code from raw text or URL-ish paste
 function extractStickerFromText(raw: string): string | null {
   if (!raw) return null;
   const t = raw.trim();
@@ -43,7 +45,6 @@ function extractStickerFromText(raw: string): string | null {
   return normalizeSticker(t);
 }
 
-// Treat bare prefixes as “too broad” so the list doesn’t explode
 function isGenericCodePrefix(str: string) {
   const t = (str || "").trim().toUpperCase();
   return t === "NBK" || t === "JP" || t === "NBK-" || t === "JP-";
@@ -65,6 +66,37 @@ async function readJsonSafe(res: Response) {
   }
 }
 
+// Local feedback gate (fallback if server doesn't tell us)
+const LS_VOTES_KEY = "fb_votesGiven";
+const LS_LAST_FB_KEY = "fb_lastFeedbackAt";
+function shouldPromptFeedbackLocal(): boolean {
+  try {
+    const now = Date.now();
+    const last = Number(localStorage.getItem(LS_LAST_FB_KEY) || "0");
+    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1; // increment optimistically
+    const twentyDays = 20 * 24 * 60 * 60 * 1000;
+    const timeOk = !last || now - last >= twentyDays;
+    const countOk = votes % 21 === 0;
+    // Don't persist yet; caller will persist when actually showing modal
+    return timeOk || countOk;
+  } catch {
+    return false;
+  }
+}
+function markFeedbackShownLocal() {
+  try {
+    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
+    localStorage.setItem(LS_VOTES_KEY, String(votes));
+    localStorage.setItem(LS_LAST_FB_KEY, String(Date.now()));
+  } catch {}
+}
+function incrementVotesWithoutPrompt() {
+  try {
+    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
+    localStorage.setItem(LS_VOTES_KEY, String(votes));
+  } catch {}
+}
+
 export default function VotePageClient() {
   const qs = useSearchParams();
   const router = useRouter();
@@ -77,9 +109,7 @@ export default function VotePageClient() {
   const [sameCompanyCallout, setSameCompanyCallout] = useState("");
 
   const showNoSelf = useCallback(() => {
-    setSelfCallout(
-      "No self-voting! Please choose a deserving coworker instead."
-    );
+    setSelfCallout("No self-voting! Please choose a deserving coworker instead.");
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
@@ -88,9 +118,7 @@ export default function VotePageClient() {
   }, []);
 
   const showNoSameCompany = useCallback(() => {
-    setSameCompanyCallout(
-      "No same-company voting! Please pick someone from a different company."
-    );
+    setSameCompanyCallout("No same-company voting! Please pick someone from a different company.");
     try {
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch {
@@ -99,9 +127,7 @@ export default function VotePageClient() {
   }, []);
 
   const voterFromQS = normalizeSticker(qs.get("voter") || "");
-  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as
-    | "token"
-    | "goodCatch";
+  const typeFromQS = (qs.get("type") === "goodCatch" ? "goodCatch" : "token") as "token" | "goodCatch";
 
   const [step, setStep] = useState<Step>(voterFromQS ? "target" : "voter");
 
@@ -109,10 +135,7 @@ export default function VotePageClient() {
   const [voterCode, setVoterCode] = useState(voterFromQS);
   const [voterName, setVoterName] = useState("");
   const [voterCompanyId, setVoterCompanyId] = useState("");
-  const voterProject = useMemo(
-    () => (voterCode ? getProjectFromCode(voterCode) : "NBK"),
-    [voterCode]
-  );
+  const voterProject = useMemo(() => (voterCode ? getProjectFromCode(voterCode) : "NBK"), [voterCode]);
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
 
   // token type (Walsh only)
@@ -129,21 +152,18 @@ export default function VotePageClient() {
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // scanner overlay control
-  const [scanOpen, setScanOpen] = useState(false);
   const [msg, setMsg] = useState("");
 
   // lock state
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
 
+  // feedback modal
+  const [showFeedback, setShowFeedback] = useState(false);
+
   const lockOut = (kind: LockKind = "daily") => {
     setDailyLocked(true);
-    setLockMsg(
-      kind === "company"
-        ? getNextCompanyCapMessage()
-        : getNextOutOfTokensMessage()
-    );
+    setLockMsg(kind === "company" ? getNextCompanyCapMessage() : getNextOutOfTokensMessage());
   };
 
   async function apiLookup(code: string): Promise<Worker | null> {
@@ -158,21 +178,13 @@ export default function VotePageClient() {
     try {
       const sp = new URLSearchParams({ voter });
       if (companyId) sp.set("companyId", companyId);
-      const r = await fetch(`/api/vote/limits?${sp.toString()}`, {
-        cache: "no-store",
-      });
+      const r = await fetch(`/api/vote/limits?${sp.toString()}`, { cache: "no-store" });
       const j: any = await readJsonSafe(r);
 
-      const daily = Number.isFinite(+j?.dailyRemaining)
-        ? +j.dailyRemaining
-        : Infinity;
-      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining)
-        ? +j.companyMonthlyRemaining
-        : Infinity;
+      const daily = Number.isFinite(+j?.dailyRemaining) ? +j.dailyRemaining : Infinity;
+      const companyMonthly = Number.isFinite(+j?.companyMonthlyRemaining) ? +j.companyMonthlyRemaining : Infinity;
       const companyAny =
-        Number.isFinite(+j?.companyRemaining) && +j.companyRemaining >= 0
-          ? +j.companyRemaining
-          : companyMonthly;
+        Number.isFinite(+j?.companyRemaining) && +j.companyRemaining >= 0 ? +j.companyRemaining : companyMonthly;
 
       if (companyAny <= 0) {
         lockOut("company");
@@ -204,7 +216,6 @@ export default function VotePageClient() {
       if (!w) {
         setVoterName("");
         setVoterCompanyId("");
-        setScanOpen(false);
         setMsg("We didn’t find your code. Redirecting to register…");
         setTimeout(() => router.push(`/k/${code}`), 300);
         return;
@@ -215,7 +226,6 @@ export default function VotePageClient() {
       await checkLimits(code, w.companyId);
 
       setStep("target");
-      setScanOpen(false);
     },
     [router]
   );
@@ -237,9 +247,7 @@ export default function VotePageClient() {
 
       const w = await apiLookup(code);
       if (!w) {
-        setMsg(
-          "We couldn't find that sticker. Ask your coworker to register first."
-        );
+        setMsg("We couldn't find that sticker. Ask your coworker to register first.");
         return;
       }
 
@@ -252,7 +260,6 @@ export default function VotePageClient() {
       setSameCompanyCallout("");
       setTargetCode(code);
       setTargetName(w.fullName ?? "");
-      setScanOpen(false);
       setStep("confirm");
     },
     [voterProject, voterCode, voterCompanyId, showNoSelf, showNoSameCompany]
@@ -276,42 +283,48 @@ export default function VotePageClient() {
         const name = (json.target?.fullName || targetName || "").trim();
         setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
         setStep("done");
-        setScanOpen(false);
+
+        // --- Feedback gating:
+        // Prefer server signal; fallback to local cadence (21st vote or ≥20 days)
+        const serverSays = Boolean(json?.promptFeedback);
+        const localSays = shouldPromptFeedbackLocal();
+
+        if (serverSays || localSays) {
+          // Persist local counters only when actually showing the modal
+          markFeedbackShownLocal();
+          setShowFeedback(true);
+        } else {
+          // Still increment local vote count to stay in sync
+          incrementVotesWithoutPrompt();
+        }
         return;
       }
 
       const err = String(json?.error || "").toLowerCase();
-      if (json?.code === "SAME_COMPANY" || err.includes("same") && err.includes("company")) {
+      if (json?.code === "SAME_COMPANY" || (err.includes("same") && err.includes("company"))) {
         showNoSameCompany();
         setStep("target");
-        setScanOpen(false);
         return;
       }
       if (json?.code === "DAILY_LIMIT" || (err.includes("daily") && err.includes("limit"))) {
         lockOut("daily");
         return;
       }
-      if (
-        json?.code === "COMPANY_MONTHLY_LIMIT" ||
-        err.includes("company") && (err.includes("monthly") || err.includes("limit"))
-      ) {
+      if (json?.code === "COMPANY_MONTHLY_LIMIT" || (err.includes("company") && (err.includes("monthly") || err.includes("limit")))) {
         lockOut("company");
         return;
       }
       if (err.includes("self")) {
         showNoSelf();
         setStep("target");
-        setScanOpen(false);
         return;
       }
 
       setMsg(json?.error || "Error");
       setStep("target");
-      setScanOpen(false);
     } catch (e: any) {
       setMsg(e?.message || "Network error");
       setStep("target");
-      setScanOpen(false);
     }
   }
 
@@ -319,15 +332,10 @@ export default function VotePageClient() {
 
   // typing or changing the company means they're making a new choice
   useEffect(() => {
-  setSelfCallout("");
-  setSameCompanyCallout("");
-  setMsg("");
-}, [query, filterCompanyId]);
-
-  // Close camera when not on a scanning step
-  useEffect(() => {
-    if (step === "confirm" || step === "done") setScanOpen(false);
-  }, [step]);
+    setSelfCallout("");
+    setSameCompanyCallout("");
+    setMsg("");
+  }, [query, filterCompanyId]);
 
   // If landing with voter=?, pre-check limits
   useEffect(() => {
@@ -377,31 +385,31 @@ export default function VotePageClient() {
     }
 
     let cancelled = false;
-(async () => {
-  try {
-    setIsSearching(true);
-    const params = new URLSearchParams();
-    if (filterCompanyId) params.set("companyId", filterCompanyId);
+    (async () => {
+      try {
+        setIsSearching(true);
+        const params = new URLSearchParams();
+        if (filterCompanyId) params.set("companyId", filterCompanyId);
 
-    const qTrim = q; // already trimmed above
-    if (qTrim) {
-      params.set("q", qTrim);
-    } else if (filterCompanyId && !qTrim) {
-      // 👇 ensure we still get results when only a company is selected
-      params.set("q", "*");
-    }
+        const qTrim = q; // already trimmed above
+        if (qTrim) {
+          params.set("q", qTrim);
+        } else if (filterCompanyId && !qTrim) {
+          // ensure we still get results when only a company is selected
+          params.set("q", "*");
+        }
 
-    const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-      cache: "no-store",
-    });
-    const j: any = await readJsonSafe(r);
-    if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
-  } catch {
-    if (!cancelled) setResults([]);
-  } finally {
-    if (!cancelled) setIsSearching(false);
-  }
-})();
+        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const j: any = await readJsonSafe(r);
+        if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setIsSearching(false);
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -420,15 +428,10 @@ export default function VotePageClient() {
     if (!hasFilter && !hasLongEnoughQuery) return;
     if (!results || results.length === 0) return;
 
-    const y =
-      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+    const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
     window.scrollTo({ top: y, behavior: "smooth" });
     (document.activeElement as HTMLElement | null)?.blur?.();
   }, [step, filterCompanyId, query, isSearching, results.length]);
-
-  // Stable scan callbacks
-  const onVoterScan = useCallback((t: string | null) => t && setVoter(t), [setVoter]);
-  const onTargetScan = useCallback((t: string | null) => t && setTarget(t), [setTarget]);
 
   /* ---------- UI ---------- */
 
@@ -457,10 +460,7 @@ export default function VotePageClient() {
         >
           {selfCallout}
           <div className="mt-1">
-            <button
-              className="text-xs underline"
-              onClick={() => setSelfCallout("")}
-            >
+            <button className="text-xs underline" onClick={() => setSelfCallout("")}>
               Dismiss
             </button>
           </div>
@@ -474,10 +474,7 @@ export default function VotePageClient() {
         >
           {sameCompanyCallout}
           <div className="mt-1">
-            <button
-              className="text-xs underline"
-              onClick={() => setSameCompanyCallout("")}
-            >
+            <button className="text-xs underline" onClick={() => setSameCompanyCallout("")}>
               Dismiss
             </button>
           </div>
@@ -488,13 +485,7 @@ export default function VotePageClient() {
       {step === "voter" && (
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white">
-            <p className="text-sm">Scan your QR sticker or enter your code below.</p>
-          </div>
-
-          <div className="rounded border overflow-hidden">
-            <div className="aspect-[4/3]">
-              <QrScanner onScan={onVoterScan} onError={(e) => setMsg(e.message)} />
-            </div>
+            <p className="text-sm">Enter your code to start.</p>
           </div>
 
           <form
@@ -550,7 +541,7 @@ export default function VotePageClient() {
                   />
                 </div>
                 <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
-                  Tap a token above, then scan or search your coworker.
+                  Choose a token type, then enter code or search coworker below.
                 </p>
               </>
             ) : (
@@ -558,31 +549,6 @@ export default function VotePageClient() {
                 <TypeBadge type="token" size="md" />
               </div>
             )}
-          </div>
-
-          {/* Tap to scan area */}
-          <div className="rounded border overflow-hidden">
-            <div className="aspect-[4/3] relative">
-              {!scanOpen && (
-                <button
-                  type="button"
-                  className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 text-white text-sm"
-                  onClick={() => setScanOpen(true)}
-                >
-                  Tap to scan
-                </button>
-              )}
-              {scanOpen && (
-                <QrScanner
-                  key={`scanner-${step}-${scanOpen}`}
-                  onScan={onTargetScan}
-                  onError={(e) => {
-                    setMsg(e.message);
-                    setScanOpen(false);
-                  }}
-                />
-              )}
-            </div>
           </div>
 
           {/* Search + Company filter */}
@@ -618,7 +584,6 @@ export default function VotePageClient() {
                   setTargetName(w.fullName || "");
                   setSelfCallout("");
                   setSameCompanyCallout("");
-                  setScanOpen(false);
                   setStep("confirm");
                 }
               }}
@@ -638,7 +603,6 @@ export default function VotePageClient() {
                 value={filterCompanyId}
                 onChange={(e) => {
                   setFilterCompanyId(e.target.value);
-                  // auto-close native picker on mobile
                   (e.target as HTMLSelectElement).blur();
                 }}
                 title="Filter by company"
@@ -661,9 +625,7 @@ export default function VotePageClient() {
                   {results.map((w) => (
                     <li key={w.code} className="flex items-center justify-between p-2">
                       <div>
-                        <div className="font-medium">
-                          {w.fullName || "(no name yet)"}
-                        </div>
+                        <div className="font-medium">{w.fullName || "(no name yet)"}</div>
                         <div className="text-xs text-gray-600">{w.code}</div>
                       </div>
                       <button
@@ -685,7 +647,6 @@ export default function VotePageClient() {
                           setTargetName(w.fullName || "");
                           setSelfCallout("");
                           setSameCompanyCallout("");
-                          setScanOpen(false);
                           setStep("confirm");
                         }}
                       >
@@ -720,8 +681,7 @@ export default function VotePageClient() {
         <section className="space-y-3">
           <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-4 text-white">
             <p className="text-sm text-center">
-              Confirm token is for{" "}
-              <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
+              Confirm token is for <b>{targetName ? `${targetName} (${targetCode})` : targetCode}</b>?
             </p>
           </div>
           <div className="flex gap-2">
@@ -729,15 +689,11 @@ export default function VotePageClient() {
               className="flex-1 py-2 rounded border"
               onClick={() => {
                 setStep("target");
-                setScanOpen(false);
               }}
             >
               Cancel
             </button>
-            <button
-              className="flex-1 py-2 rounded bg-black text-white"
-              onClick={submitVote}
-            >
+            <button className="flex-1 py-2 rounded bg-black text-white" onClick={submitVote}>
               Confirm
             </button>
           </div>
@@ -762,13 +718,22 @@ export default function VotePageClient() {
                 setSelfCallout("");
                 setSameCompanyCallout("");
                 setStep("target");
-                setScanOpen(false);
               }}
             >
               Vote again
             </button>
           </div>
         </section>
+      )}
+
+      {/* Feedback modal (conditionally shown) */}
+      {showFeedback && (
+        <FeedbackModal
+          onClose={() => setShowFeedback(false)}
+          project={voterProject}
+          voterCode={voterCode}
+          voterCompanyId={voterCompanyId}
+        />
       )}
     </main>
   );
