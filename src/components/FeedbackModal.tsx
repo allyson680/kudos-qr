@@ -1,3 +1,4 @@
+// src/components/FeedbackModal.tsx
 "use client";
 
 import { useState } from "react";
@@ -6,16 +7,21 @@ type Props = {
   onClose: () => void;
   project: string;
   voterCode: string;
-  voterCompanyId?: string;
+  voterCompanyId?: string | null;
 };
 
-export default function FeedbackModal({ onClose, project, voterCode, voterCompanyId }: Props) {
+export default function FeedbackModal({
+  onClose,
+  project,
+  voterCode,
+  voterCompanyId,
+}: Props) {
   const [rating, setRating] = useState<number>(0);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    // Skip if no rating selected
+    // If no rating, treat as skip
     if (!rating) return onClose();
     setBusy(true);
     try {
@@ -30,39 +36,30 @@ export default function FeedbackModal({ onClose, project, voterCode, voterCompan
           note,
         }),
       });
-    } catch (e) {
-      console.warn("Feedback error", e);
+    } catch {
+      // ignore
     } finally {
-      setBusy(false);
-      onClose(); // ✅ always close
+      onClose();
     }
   }
 
   return (
-    // Backdrop itself closes on click
-    <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm p-4 flex items-center justify-center"
-      onClick={onClose}
-    >
-      {/* Card stops the click from bubbling to the backdrop */}
-      <div
-        className="w-full max-w-sm rounded-2xl bg-neutral-900 text-white p-6 shadow-2xl border border-white/10"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold text-green-400">How’s this going?</h3>
-        <p className="mt-1 text-sm text-gray-300">Quick 2-second rating. Comment optional.</p>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl text-gray-900">
+        <h3 className="text-lg font-semibold">How’s this going?</h3>
+        <p className="mt-1 text-sm text-gray-600">
+          Quick 2-second rating. Comment optional.
+        </p>
 
-        <div className="mt-4 flex justify-center gap-2">
+        {/* 1–5 buttons */}
+        <div className="mt-3 flex gap-2">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
               key={n}
               type="button"
               onClick={() => setRating(n)}
-              className={`h-10 w-10 rounded-full border font-medium transition ${
-                rating >= n
-                  ? "bg-green-500 border-green-400 text-white"
-                  : "bg-neutral-800 border-neutral-600 text-gray-300"
-              }`}
+              className={`h-10 w-10 rounded-full border text-sm transition
+                ${rating >= n ? "bg-black text-white" : "bg-white text-gray-900"}`}
               aria-label={`${n} star${n > 1 ? "s" : ""}`}
             >
               {n}
@@ -74,23 +71,18 @@ export default function FeedbackModal({ onClose, project, voterCode, voterCompan
           value={note}
           onChange={(e) => setNote(e.target.value)}
           placeholder="Anything we should improve?"
-          className="mt-4 w-full rounded-lg border border-neutral-700 bg-neutral-800 text-gray-100 placeholder:text-gray-400 p-2 text-sm focus:ring-2 focus:ring-green-400"
+          className="mt-3 w-full rounded-lg border p-2 text-sm placeholder:text-gray-500"
           rows={3}
           maxLength={600}
         />
 
-        <div className="mt-5 flex items-center justify-between">
-          <button
-            type="button"
-            className="text-sm text-gray-300 underline hover:text-white"
-            onClick={onClose}
-            disabled={busy}
-          >
+        <div className="mt-4 flex items-center justify-between">
+          <button type="button" className="text-sm text-gray-600 underline" onClick={onClose}>
             Skip
           </button>
           <button
             type="button"
-            className="rounded-lg bg-green-600 px-4 py-2 text-white font-semibold hover:bg-green-500 disabled:opacity-50"
+            className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-50"
             onClick={submit}
             disabled={busy}
           >

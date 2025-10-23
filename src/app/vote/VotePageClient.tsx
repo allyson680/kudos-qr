@@ -319,27 +319,28 @@ export default function VotePageClient() {
 
       // ---------- FEEDBACK GATE ----------
       try {
-        const KEY_VOTES = "fb_votesGiven";
-        const KEY_LAST  = "fb_lastFeedbackAt";
-        const prevVotes = Number(localStorage.getItem(KEY_VOTES) || "0");
-        const votes = prevVotes + 1;                   // increment for this vote
-        const last  = Number(localStorage.getItem(KEY_LAST) || "0");
-        const twentyDays = 20 * 24 * 60 * 60 * 1000;
+  const KEY_VOTES = "fb_votesGiven";
+  const KEY_LAST  = "fb_lastFeedbackAt";
 
-        const serverSays = json?.promptFeedback === true; // only true forces it
-        const countOk = votes % 21 === 0 && votes > 0;    // 21, 42, 63...
-        const timeOk  = last > 0 && Date.now() - last >= twentyDays;
+  const prevVotes = Number(localStorage.getItem(KEY_VOTES) || "0");
+  const votes = prevVotes + 1; // increment for this vote
+  const last  = Number(localStorage.getItem(KEY_LAST) || "0");
+  const twentyDays = 20 * 24 * 60 * 60 * 1000;
 
-        if (serverSays || countOk || timeOk) {
-          // persist only when showing the modal
-          localStorage.setItem(KEY_VOTES, String(votes));
-          localStorage.setItem(KEY_LAST, String(Date.now()));
-          setShowFeedback(true);
-        } else {
-          // quietly persist votes but don't open the modal
-          localStorage.setItem(KEY_VOTES, String(votes));
-        }
-      } catch {}
+  const serverSays = json?.promptFeedback === true; // only your API can force it
+  const countOk = votes % 21 === 0 && votes > 0;     // 21, 42, 63, ...
+  const timeOk  = last > 0 && (Date.now() - last) >= twentyDays;
+
+  if (serverSays || countOk || timeOk) {
+    // persist only when showing the modal
+    localStorage.setItem(KEY_VOTES, String(votes));
+    localStorage.setItem(KEY_LAST,  String(Date.now()));
+    setShowFeedback(true);
+  } else {
+    // quietly persist the vote count but don't open the modal
+    localStorage.setItem(KEY_VOTES, String(votes));
+  }
+} catch {}
       // -----------------------------------
 
       return;
