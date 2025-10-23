@@ -84,12 +84,15 @@ function shouldPromptFeedbackLocal(): boolean {
   try {
     const now = Date.now();
     const last = Number(localStorage.getItem(LS_LAST_FB_KEY) || "0");
-    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1; // increment optimistically
+    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
+
     const twentyDays = 20 * 24 * 60 * 60 * 1000;
 
-    // ✅ Only show if either enough votes have passed or 20+ days since last shown
-    const countOk = votes % 21 === 0;
-    const timeOk = last > 0 && (now - last) >= twentyDays;
+    // Only show after the 2nd vote minimum
+    if (votes < 2) return false;
+
+    const countOk = votes > 0 && votes % 21 === 0;
+    const timeOk = last > 0 && now - last >= twentyDays;
 
     return countOk || timeOk;
   } catch {
