@@ -567,14 +567,6 @@ export default function VotePageClient() {
 )}
 
 
-      <button
-        className="px-4 rounded bg-black text-white disabled:opacity-50"
-        type="submit"
-        disabled={finding}
-      >
-        {finding ? "Please wait…" : "Next"}
-      </button>
-
       {/* Big callouts */}
       {selfCallout && (
         <div
