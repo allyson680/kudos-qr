@@ -464,54 +464,55 @@ export default function VotePageClient() {
     }
 
     let cancelled = false;
-    (async () => {
-      try {
-        setIsSearching(true);
-        const params = new URLSearchParams();
-        if (filterCompanyId) params.set("companyId", filterCompanyId);
+     const handle = setTimeout(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filterCompanyId) params.set("companyId", filterCompanyId);
 
-        const qTrim = q;
-        if (qTrim) {
-          params.set("q", qTrim);
-        } else if (filterCompanyId && !qTrim) {
-          params.set("q", "*");
-        }
-
-        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-          cache: "no-store",
-        });
-        const j: any = await readJsonSafe(r);
-        if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
-      } catch {
-        if (!cancelled) setResults([]);
-      } finally {
-        if (!cancelled) setIsSearching(false);
+      if (q) {
+        params.set("q", q); // 1+ char query allowed now
+      } else if (filterCompanyId && !q) {
+        // still list by company when only a company filter is chosen
+        params.set("q", "*");
       }
-    })();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [step, filterCompanyId, query, voterProject]);
+      const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const j: any = await readJsonSafe(r);
+      if (!cancelled) setResults(Array.isArray(j?.workers) ? j.workers : []);
+    } catch {
+      if (!cancelled) setResults([]);
+    } finally {
+      if (!cancelled) setIsSearching(false);
+    }
+  }, 200); // 200–300ms feels good
+
+  return () => {
+    cancelled = true;
+    clearTimeout(handle);
+  };
+}, [step, filterCompanyId, query]);
+
 
   // AUTO-SCROLL when user types ≥3 chars or picks a company
-  useEffect(() => {
-    if (step !== "target") return;
-    if (isSearching) return;
-    if (!resultsRef.current) return;
+  // AUTO-SCROLL when results appear (do NOT blur the input)
+useEffect(() => {
+  if (step !== "target") return;
+  if (isSearching) return;
+  if (!resultsRef.current) return;
 
-    const hasFilter = !!filterCompanyId;
-    const hasLongEnoughQuery = query.trim().length >= 3;
+  const hasFilter = !!filterCompanyId;
+  const hasAnyQuery = query.trim().length >= 1;
 
-    if (!hasFilter && !hasLongEnoughQuery) return;
-    if (!results || results.length === 0) return;
+  if (!hasFilter && !hasAnyQuery) return;
+  if (!results || results.length === 0) return;
 
-    const y =
-      resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
-    window.scrollTo({ top: y, behavior: "smooth" });
-    (document.activeElement as HTMLElement | null)?.blur?.();
-  }, [step, filterCompanyId, query, isSearching, results.length]);
+  const y = resultsRef.current.getBoundingClientRect().top + window.scrollY - 12;
+  window.scrollTo({ top: y, behavior: "smooth" });
 
+  // ⛔️ removed: (document.activeElement as HTMLElement | null)?.blur?.();
+}, [step, filterCompanyId, query, isSearching, results.length]);
   // Stable scan callbacks
   const onVoterScan = useCallback(
     (t: string | null) => t && setVoter(t),
