@@ -510,12 +510,6 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 value={targetCode}
                 onChange={(e) => setTargetCode(e.target.value)}
               />
-              <button
-                className="px-4 rounded bg-black text-white"
-                onClick={() => fetchTargetInfo(targetCode)}
-              >
-                Next
-              </button>
             </div>
 
             {/* 🔎 Search & Filter */}
