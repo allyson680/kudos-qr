@@ -552,7 +552,6 @@ export default function VotePageClient() {
 
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
-      <h1 className="text-xl font-semibold text-center">Virtual Token of Excellence</h1>
       <div ref={topRef} />
 
       {finding && (
@@ -621,25 +620,22 @@ export default function VotePageClient() {
           </div>
 
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setVoter(voterCode);
-            }}
-            className="flex gap-2"
-          >
-            <input
-              className="flex-1 border rounded p-2"
-              placeholder="Your code (e.g., nbk1 / JP001)"
-              value={voterCode}
-              onChange={(e) => setVoterCode(e.target.value)}
-              inputMode="search"
-              autoCapitalize="characters"
-              autoCorrect="off"
-            />
-            <button className="px-4 rounded bg-black text-white" type="submit">
-              Next
-            </button>
-          </form>
+  onSubmit={(e) => {
+    e.preventDefault();
+    setVoter(voterCode);
+  }}
+  className="space-y-2"
+>
+  <input
+    className="w-full border rounded p-2"
+    placeholder="Enter your code (e.g., NBK1 / JP001)"
+    value={voterCode}
+    onChange={(e) => setVoterCode(e.target.value)}
+    inputMode="search"
+    autoCapitalize="characters"
+    autoCorrect="off"
+  />
+</form>
         </section>
       )}
 
