@@ -714,45 +714,29 @@ export default function VotePageClient() {
             )}
           </div>
 
-          {/* Project context + quick code entry (same-project enforced) */}
-          <div className="rounded border p-3 space-y-3">
-            {/* NBK / JP buttons (only current project enabled) */}
-            <div className="flex items-center justify-center gap-3">
-                <label className="block text-xs text-gray-400 mb-1">
-                   Auto set to same project - cannot change
-                  </label>
-              {(["NBK", "JP"] as const).map((proj) => {
-                const selected = voterProject === proj;
-                return (
-                  <button
-                    key={proj}
-                    type="button"
-                    disabled={!selected}
-                    onClick={() => {
-                      if (!selected) {
-                        // gently alert; you can replace with a toast if you have one
-                        setMsg(
-                          "Coworker must be assigned to the same project."
-                        );
-                      }
-                    }}
-                    className={`px-4 py-2 rounded font-bold border ${
-                      selected
-                        ? "bg-emerald-600 border-emerald-400 text-white"
-                        : "bg-neutral-800 border-neutral-600 text-gray-400 cursor-not-allowed"
-                    }`}
-                    aria-pressed={selected}
-                    title={
-                      selected
-                        ? `Project: ${proj}`
-                        : "Coworker must be assigned to the same project"
-                    }
-                  >
-                    {proj}
-                  </button>
-                );
-              })}
-            </div>
+          {/* NBK / JP project buttons (match voter project) */}
+          <div className="flex justify-center gap-4 mt-3">
+            {(["NBK", "JP"] as const).map((proj) => (
+              <button
+                key={proj}
+                type="button"
+                onClick={() => {
+                  if (proj !== voterProject) {
+                    alert("Coworker must be assigned to the same project!");
+                    return;
+                  }
+                  setFilterCompanyId(""); // optional: reset any filters
+                }}
+                className={`px-5 py-2 rounded font-bold border transition-colors ${
+                  proj === voterProject
+                    ? "bg-emerald-600 border-emerald-400 text-white"
+                    : "bg-neutral-800 border-neutral-600 text-gray-400 opacity-60 cursor-not-allowed"
+                }`}
+                disabled={proj !== voterProject}
+              >
+                {proj}
+              </button>
+            ))}
           </div>
           {/* quick numeric target code entry (digits only, mobile keypad) */}
           <div className="border border-emerald-600 rounded-lg p-3 bg-neutral-900/60">
