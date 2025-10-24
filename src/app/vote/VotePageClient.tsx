@@ -580,59 +580,96 @@ export default function VotePageClient() {
         </div>
       )}
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setVoter(voterCode);
-        }}
-        className="space-y-4"
-      >
-        {/* Hidden input that triggers the mobile number pad */}
-        <input
-          ref={numInputRef}
-          type="tel"
-          inputMode="numeric"
-          className="sr-only"
-          value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
-          onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
-            const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
-            setVoterCode(prefix + digits.padStart(4, "0"));
-          }}
-          aria-label="Enter your number"
-        />
+      {/* STEP 1 — voter */}
+      {step === "voter" && (
+        <section className="space-y-4 text-white">
+          <div className="p-3">
+            <p className="text-sm">
+              Select your project, then tap to enter your number.
+            </p>
+          </div>
 
-        {/* Tap-to-enter button */}
-        <button
-          type="button"
-          onClick={() => numInputRef.current?.focus()} // opens phone keypad
-          className="w-full py-4 rounded-lg border border-emerald-500 text-emerald-200 bg-neutral-900 text-lg font-semibold hover:bg-neutral-800"
-        >
-          Tap to enter your number
-        </button>
+          {/* NBK / JP selection buttons */}
+          <div className="flex justify-center gap-4">
+            {(["NBK", "JP"] as const).map((proj) => (
+              <button
+                key={proj}
+                type="button"
+                onClick={() => {
+                  const digits = voterCode
+                    .replace(/^(NBK|JP)-?/i, "")
+                    .replace(/\D/g, "")
+                    .slice(0, 4);
+                  setVoterCode(proj + digits.padStart(4, "0"));
+                  numInputRef.current?.focus();
+                }}
+                className={`px-5 py-2 rounded font-bold border transition-colors ${
+                  voterCode.startsWith(proj)
+                    ? "bg-emerald-600 border-emerald-400 text-white"
+                    : "bg-neutral-800 border-neutral-600 text-gray-200 hover:bg-neutral-700"
+                }`}
+                aria-pressed={voterCode.startsWith(proj)}
+              >
+                {proj}
+              </button>
+            ))}
+          </div>
 
-        {/* Live preview */}
-        <div className="text-center text-sm text-gray-300">
-          {voterCode.replace(/^(NBK|JP)-?/i, "") ? (
-            <>
-              Your code will be{" "}
-              <b>
-                {(voterCode.startsWith("JP") ? "JP" : "NBK") +
-                  voterCode.replace(/^(NBK|JP)-?/i, "").padStart(4, "0")}
-              </b>
-            </>
-          ) : (
-            "Waiting for entry…"
-          )}
-        </div>
+          {/* Hidden input that triggers the mobile number pad */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              setVoter(voterCode);
+            }}
+            className="space-y-4"
+          >
+            <input
+              ref={numInputRef}
+              type="tel"
+              inputMode="numeric"
+              className="sr-only"
+              value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+                const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
+                setVoterCode(prefix + digits.padStart(4, "0"));
+              }}
+              aria-label="Enter your number"
+            />
 
-        <button
-          type="submit"
-          className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-        >
-          Continue
-        </button>
-      </form>
+            {/* Tap-to-enter button */}
+            <button
+              type="button"
+              onClick={() => numInputRef.current?.focus()} // opens phone keypad
+              className="w-full py-4 rounded-lg border border-emerald-500 text-emerald-200 bg-neutral-900 text-lg font-semibold hover:bg-neutral-800"
+            >
+              Tap to enter your number
+            </button>
+
+            {/* Live preview */}
+            <div className="text-center text-sm text-gray-300">
+              {voterCode.replace(/^(NBK|JP)-?/i, "") ? (
+                <>
+                  Your code will be{" "}
+                  <b>
+                    {(voterCode.startsWith("JP") ? "JP" : "NBK") +
+                      voterCode.replace(/^(NBK|JP)-?/i, "").padStart(4, "0")}
+                  </b>
+                </>
+              ) : (
+                "Waiting for entry…"
+              )}
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              Continue
+            </button>
+          </form>
+        </section>
+      )}
 
       {/* STEP 2 — target */}
       {step === "target" && (
