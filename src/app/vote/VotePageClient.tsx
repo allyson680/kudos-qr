@@ -696,246 +696,157 @@ export default function VotePageClient() {
       )}
 
       {/* STEP 2 — target */}
-{step === "target" && (
-  <section className="space-y-3">
-    <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
-      <p className="text-sm">
-        Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
-      </p>
+      {step === "target" && (
+        <section className="space-y-3">
+          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
+            <p className="text-sm">
+              Hello <b>{voterName || voterCode}</b>, who would you like to give
+              a virtual token to?
+            </p>
 
-      {/* Token choice ONLY here, with extra spacing & dimming */}
-      {isWalsh ? (
-        <>
-          {isWalsh && tokenLocked && (
-            <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 p-2 text-center text-sm">
-              Tokens are capped today, but you can still send a <b>Good Catch</b>.
+            {/* Token choice ONLY here, with extra spacing & dimming */}
+            {isWalsh ? (
+              <>
+                {isWalsh && tokenLocked && (
+                  <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 p-2 text-center text-sm">
+                    Tokens are capped today, but you can still send a{" "}
+                    <b>Good Catch</b>.
+                  </div>
+                )}
+                <div className="mt-6 mb-4 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
+                  <TypeBadge
+                    type="token"
+                    size="md"
+                    interactive={!tokenLocked}
+                    selected={voteType === "token"}
+                    dimmed={voteType !== "token" || tokenLocked}
+                    onClick={() => {
+                      if (tokenLocked) return;
+                      setVoteType("token");
+                    }}
+                  />
+                  <TypeBadge
+                    type="goodCatch"
+                    size="md"
+                    interactive
+                    selected={voteType === "goodCatch"}
+                    dimmed={voteType !== "goodCatch"}
+                    onClick={() => setVoteType("goodCatch")}
+                  />
+                </div>
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
+                  Choose a token type, then enter code or search coworker below.
+                </p>
+              </>
+            ) : (
+              <div className="mt-3 flex justify-center">
+                <TypeBadge type="token" size="md" />
+              </div>
+            )}
+          </div>
+
+          {/* Project context + quick code entry (same-project enforced) */}
+          <div className="rounded border p-3 space-y-3">
+            {/* NBK / JP buttons (only current project enabled) */}
+            <div className="flex items-center justify-center gap-3">
+              {(["NBK", "JP"] as const).map((proj) => {
+                const selected = voterProject === proj;
+                return (
+                  <button
+                    key={proj}
+                    type="button"
+                    disabled={!selected}
+                    onClick={() => {
+                      if (!selected) {
+                        // gently alert; you can replace with a toast if you have one
+                        setMsg(
+                          "Coworker must be assigned to the same project."
+                        );
+                      }
+                    }}
+                    className={`px-4 py-2 rounded font-bold border ${
+                      selected
+                        ? "bg-emerald-600 border-emerald-400 text-white"
+                        : "bg-neutral-800 border-neutral-600 text-gray-400 cursor-not-allowed"
+                    }`}
+                    aria-pressed={selected}
+                    title={
+                      selected
+                        ? `Project: ${proj}`
+                        : "Coworker must be assigned to the same project"
+                    }
+                  >
+                    {proj}
+                  </button>
+                );
+              })}
             </div>
-          )}
-          <div className="mt-6 mb-4 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
-            <TypeBadge
-              type="token"
-              size="md"
-              interactive={!tokenLocked}
-              selected={voteType === "token"}
-              dimmed={voteType !== "token" || tokenLocked}
-              onClick={() => {
-                if (tokenLocked) return;
-                setVoteType("token");
-              }}
-            />
-            <TypeBadge
-              type="goodCatch"
-              size="md"
-              interactive
-              selected={voteType === "goodCatch"}
-              dimmed={voteType !== "goodCatch"}
-              onClick={() => setVoteType("goodCatch")}
-            />
-          </div>
-          <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
-            Choose a token type, then enter code or search coworker below.
-          </p>
-        </>
-      ) : (
-        <div className="mt-3 flex justify-center">
-          <TypeBadge type="token" size="md" />
-        </div>
-      )}
-    </div>
 
-    {/* Project context + quick code entry (same-project enforced) */}
-    <div className="rounded border p-3 space-y-3">
-      {/* NBK / JP buttons (only current project enabled) */}
-      <div className="flex items-center justify-center gap-3">
-        {(["NBK", "JP"] as const).map((proj) => {
-          const selected = voterProject === proj;
-          return (
-            <button
-              key={proj}
-              type="button"
-              disabled={!selected}
-              onClick={() => {
-                if (!selected) {
-                  // gently alert; you can replace with a toast if you have one
-                  setMsg("Coworker must be assigned to the same project.");
-                }
-              }}
-              className={`px-4 py-2 rounded font-bold border ${
-                selected
-                  ? "bg-emerald-600 border-emerald-400 text-white"
-                  : "bg-neutral-800 border-neutral-600 text-gray-400 cursor-not-allowed"
-              }`}
-              aria-pressed={selected}
-              title={selected ? `Project: ${proj}` : "Coworker must be assigned to the same project"}
-            >
-              {proj}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* quick numeric target code entry (digits only) + keypad */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const digits = targetDigits.replace(/\D/g, "").slice(0, 4);
-          if (!digits) return;
-          const full = voterProject + digits.padStart(4, "0");
-          setTarget(full); // uses your existing validations
-        }}
-        className="space-y-2"
-      >
-        <div className="flex items-end gap-2">
-          <div className="flex-1">
-            <label className="block text-xs text-gray-400 mb-1">
-              Enter coworker number (same project)
-            </label>
-            <input
-              type="tel"
-              className="w-full border rounded p-2 text-black"
-              placeholder={`e.g., 23  → ${voterProject}0023`}
-              value={targetDigits}
-              onChange={(e) =>
-                setTargetDigits(e.target.value.replace(/\D/g, "").slice(0, 4))
-              }
-              inputMode="numeric"
-              aria-label="Coworker number"
-            />
-          </div>
-          <button
-            type="submit"
-            className="px-4 py-2 rounded bg-black text-white"
-            disabled={!targetDigits}
-            title={
-              !targetDigits
-                ? "Type a number"
-                : `Use ${voterProject}${targetDigits.padStart(4, "0")}`
-            }
-          >
-            Use Code
-          </button>
-        </div>
-
-        {/* Onscreen keypad */}
-        <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto select-none">
-          {["1","2","3","4","5","6","7","8","9","←","0","↵"].map((key) => (
-            <button
-              key={key}
-              type={key === "↵" ? "submit" : "button"}
-              onClick={(e) => {
-                if (key === "↵") return; // submit handled by form
+            {/* quick numeric target code entry (digits only, mobile keypad) */}
+            <form
+              onSubmit={(e) => {
                 e.preventDefault();
-                if (key === "←") {
-                  setTargetDigits((d) => d.slice(0, -1));
+                const digits = targetDigits.replace(/\D/g, "").slice(0, 4);
+                if (!digits) return;
+                const full = voterProject + digits.padStart(4, "0");
+                setTarget(full); // existing validation flow
+              }}
+              className="space-y-3"
+            >
+              <div className="flex items-end gap-2">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-400 mb-1">
+                    Enter coworker number (same project)
+                  </label>
+                  <input
+                    type="tel"
+                    className="w-full border rounded p-3 text-black text-center text-lg"
+                    placeholder={`e.g., 23 → ${voterProject}0023`}
+                    value={targetDigits}
+                    onChange={(e) =>
+                      setTargetDigits(
+                        e.target.value.replace(/\D/g, "").slice(0, 4)
+                      )
+                    }
+                    inputMode="numeric"
+                    aria-label="Coworker number"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="px-4 py-3 rounded bg-black text-white font-semibold"
+                  disabled={!targetDigits}
+                >
+                  Use Code
+                </button>
+              </div>
+
+              {/* small preview */}
+              <div className="text-center text-xs text-gray-400">
+                {targetDigits
+                  ? `Will use ${voterProject}${targetDigits.padStart(4, "0")}`
+                  : `Waiting for digits…`}
+              </div>
+            </form>
+          </div>
+
+          {/* Search + Company filter (unchanged) */}
+          <div className="rounded border p-3 space-y-2">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+              Or search by name/code — and/or filter by company.
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const raw = query.trim();
+                const asCode = extractStickerFromText(raw);
+                if (asCode) {
+                  setTarget(asCode);
                   return;
                 }
-                if (/^\d$/.test(key)) {
-                  setTargetDigits((d) => (d + key).slice(0, 4));
-                }
-              }}
-              className="py-3 rounded border text-lg bg-neutral-800 border-neutral-600 hover:bg-neutral-700"
-            >
-              {key}
-            </button>
-          ))}
-        </div>
-
-        {/* small preview */}
-        <div className="text-center text-xs text-gray-400">
-          {targetDigits
-            ? `Will use ${voterProject}${targetDigits.padStart(4, "0")}`
-            : `Waiting for digits…`}
-        </div>
-      </form>
-    </div>
-
-    {/* Search + Company filter (unchanged) */}
-    <div className="rounded border p-3 space-y-2">
-      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-        Or search by name/code — and/or filter by company.
-      </p>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const raw = query.trim();
-          const asCode = extractStickerFromText(raw);
-          if (asCode) {
-            setTarget(asCode);
-            return;
-          }
-          if (results.length === 1) {
-            const w = results[0];
-            if (getProjectFromCode(w.code) !== voterProject) {
-              setMsg("Same-project only (NBK→NBK, JP→JP)");
-              return;
-            }
-            if (w.companyId === voterCompanyId) {
-              showNoSameCompany();
-              return;
-            }
-            if (w.code === voterCode) {
-              showNoSelf();
-              return;
-            }
-            setTargetCode(w.code);
-            setTargetName(w.fullName || "");
-            setSelfCallout("");
-            setSameCompanyCallout("");
-            setStep("confirm");
-          }
-        }}
-        className="space-y-2"
-      >
-        <input
-          className="w-full border rounded p-2"
-          placeholder={`Search name or code (e.g., Sam, ${voterProject}0012)`}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          inputMode="search"
-          autoCapitalize="characters"
-          autoCorrect="off"
-        />
-        <select
-          className="w-full border rounded p-2 bg-neutral-900 text-white"
-          value={filterCompanyId}
-          onChange={(e) => {
-            setFilterCompanyId(e.target.value);
-            (e.target as HTMLSelectElement).blur();
-          }}
-          title="Filter by company"
-        >
-          <option value="">All companies</option>
-          {companies.length === 0 ? (
-            <option disabled>(No companies loaded)</option>
-          ) : (
-            companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name ?? c.id}
-              </option>
-            ))
-          )}
-        </select>
-      </form>
-    </div>
-
-    {/* Results (auto-scroll target) */}
-    <div ref={resultsRef}>
-      {isSearching ? (
-        <p className="text-sm text-gray-500">Searching…</p>
-      ) : results.length > 0 ? (
-        <ul className="divide-y border rounded">
-          {results.map((w) => (
-            <li key={w.code} className="flex items-center justify-between p-2">
-              <div>
-                <div className="font-medium">
-                  {w.fullName || w.fullName || "(no name yet)"}
-                </div>
-                <div className="text-xs texSt-gray-600">{w.code}</div>
-              </div>
-              <button
-                className="px-3 py-1 rounded bg-black text-white"
-                onClick={() => {
+                if (results.length === 1) {
+                  const w = results[0];
                   if (getProjectFromCode(w.code) !== voterProject) {
                     setMsg("Same-project only (NBK→NBK, JP→JP)");
                     return;
@@ -949,30 +860,106 @@ export default function VotePageClient() {
                     return;
                   }
                   setTargetCode(w.code);
-                  setTargetName(w.fullName || w.fullName || "");
+                  setTargetName(w.fullName || "");
                   setSelfCallout("");
                   setSameCompanyCallout("");
                   setStep("confirm");
+                }
+              }}
+              className="space-y-2"
+            >
+              <input
+                className="w-full border rounded p-2"
+                placeholder={`Search name or code (e.g., Sam, ${voterProject}0012)`}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                inputMode="search"
+                autoCapitalize="characters"
+                autoCorrect="off"
+              />
+              <select
+                className="w-full border rounded p-2 bg-neutral-900 text-white"
+                value={filterCompanyId}
+                onChange={(e) => {
+                  setFilterCompanyId(e.target.value);
+                  (e.target as HTMLSelectElement).blur();
                 }}
+                title="Filter by company"
               >
-                Select
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : !query.trim() ? (
-        <p className="text-sm text-gray-500">Start typing a name or code to see results…</p>
-      ) : isGenericCodePrefix(query) && !filterCompanyId ? (
-        <p className="text-sm text-gray-500 mt-2">
-          Add a few digits after NBK/JP (e.g. NBK12) or type a name.
-        </p>
-      ) : (
-        <p className="text-sm text-gray-500">{filterCompanyOrQueryMessage()}</p>
-      )}
-    </div>
-  </section>
-)}
+                <option value="">All companies</option>
+                {companies.length === 0 ? (
+                  <option disabled>(No companies loaded)</option>
+                ) : (
+                  companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name ?? c.id}
+                    </option>
+                  ))
+                )}
+              </select>
+            </form>
+          </div>
 
+          {/* Results (auto-scroll target) */}
+          <div ref={resultsRef}>
+            {isSearching ? (
+              <p className="text-sm text-gray-500">Searching…</p>
+            ) : results.length > 0 ? (
+              <ul className="divide-y border rounded">
+                {results.map((w) => (
+                  <li
+                    key={w.code}
+                    className="flex items-center justify-between p-2"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {w.fullName || w.fullName || "(no name yet)"}
+                      </div>
+                      <div className="text-xs texSt-gray-600">{w.code}</div>
+                    </div>
+                    <button
+                      className="px-3 py-1 rounded bg-black text-white"
+                      onClick={() => {
+                        if (getProjectFromCode(w.code) !== voterProject) {
+                          setMsg("Same-project only (NBK→NBK, JP→JP)");
+                          return;
+                        }
+                        if (w.companyId === voterCompanyId) {
+                          showNoSameCompany();
+                          return;
+                        }
+                        if (w.code === voterCode) {
+                          showNoSelf();
+                          return;
+                        }
+                        setTargetCode(w.code);
+                        setTargetName(w.fullName || w.fullName || "");
+                        setSelfCallout("");
+                        setSameCompanyCallout("");
+                        setStep("confirm");
+                      }}
+                    >
+                      Select
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : !query.trim() ? (
+              <p className="text-sm text-gray-500">
+                Start typing a name or code to see results…
+              </p>
+            ) : isGenericCodePrefix(query) && !filterCompanyId ? (
+              <p className="text-sm text-gray-500 mt-2">
+                Add a few digits after NBK/JP (e.g. NBK12) or type a name.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">
+                {filterCompanyOrQueryMessage()}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* STEP 3 — confirm (no badges here) */}
       {step === "confirm" && (
