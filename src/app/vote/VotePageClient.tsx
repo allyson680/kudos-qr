@@ -500,49 +500,67 @@ export default function VotePageClient() {
     };
   }, [step]);
 
-  // Live search — starts after typing the first letter
-  useEffect(() => {
-    if (step !== "target") return;
+  // Live search — works with query OR just a company filter
+useEffect(() => {
+  if (step !== "target") return;
 
-    const q = (query || "").trim();
-    const tooBroad = isGenericCodePrefix(q);
+  const q = (query || "").trim();
+  const tooBroad = isGenericCodePrefix(q);
 
-    // ⛔️ if empty, too broad, or no filter → don’t show anything yet
-    if (!q || tooBroad) {
-      setResults([]);
-      setIsSearching(false);
-      return;
-    }
+  // ⛔ nothing to do only when there's no query AND no company chosen
+  if (!q && !filterCompanyId) {
+    setResults([]);
+    setIsSearching(false);
+    return;
+  }
 
-    let cancelled = false;
-    setIsSearching(true);
+  // we'll search if:
+  // - there's a query that's not too broad, OR
+  // - there's a company selected (even if query is empty)
+  if (q && tooBroad) {
+    setResults([]);
+    setIsSearching(false);
+    return;
+  }
 
-    // debounce small delay for smooth typing
-    const handle = setTimeout(async () => {
-      try {
-        const params = new URLSearchParams();
-        if (filterCompanyId) params.set("companyId", filterCompanyId);
-        params.set("q", q);
+  let cancelled = false;
+  setIsSearching(true);
 
-        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-          cache: "no-store",
-        });
-        const j: any = await readJsonSafe(r);
-        if (!cancelled) {
-          setResults(Array.isArray(j?.workers) ? j.workers : []);
-        }
-      } catch {
-        if (!cancelled) setResults([]);
-      } finally {
-        if (!cancelled) setIsSearching(false);
+  const handle = setTimeout(async () => {
+    try {
+      const params = new URLSearchParams();
+
+      // include company filter if selected
+      if (filterCompanyId) params.set("companyId", filterCompanyId);
+
+      // include query only if present; otherwise we’re doing a simple list-by-company
+      if (q) params.set("q", q);
+
+      // helpful limits for list-by-company
+      params.set("limit", "50");
+      params.set("order", "fullNameAsc");
+
+      const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const j: any = await readJsonSafe(r);
+
+      if (!cancelled) {
+        setResults(Array.isArray(j?.workers) ? j.workers : []);
       }
-    }, 250);
+    } catch {
+      if (!cancelled) setResults([]);
+    } finally {
+      if (!cancelled) setIsSearching(false);
+    }
+  }, 250);
 
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [step, filterCompanyId, query]);
+  return () => {
+    cancelled = true;
+    clearTimeout(handle);
+  };
+}, [step, filterCompanyId, query]);
+
 
   // Stable scan callbacks
   const onVoterScan = useCallback(
