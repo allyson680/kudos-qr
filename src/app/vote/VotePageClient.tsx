@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
-import { normalizeSticker, getProjectFromCode } from "@/lib/codeUtils";
+import { normalizeStickerStrict, getProjectFromCode } from "@/lib/codeUtils";
 import TypeBadge from "@/components/TypeBadge";
 import {
   getNextOutOfTokensMessage,
@@ -18,41 +17,29 @@ const WALSH_COMPANY_ID = "WALSH";
 type Step = "voter" | "target" | "confirm" | "done";
 type LockKind = "daily" | "company";
 
-type FeedbackModalProps = {
-  onClose: () => void;
-  project: string;
-  voterCode: string;
-  voterCompanyId: string;
-};
-
-/*const FeedbackModal = dynamic<FeedbackModalProps>(
-  () => import("@/components/FeedbackModal"),
-  { ssr: false }
-); */
-
 /* ---------- helpers ---------- */
 
-// Pull code from raw text, URL, or QR payload
+// Pull code from raw text or URL
 function extractStickerFromText(raw: string): string | null {
   if (!raw) return null;
   const t = raw.trim();
 
   const m = t.match(/\b(?:NBK|JP)-?\d{1,4}\b/i);
-  if (m) return normalizeSticker(m[0]);
+  if (m) return normalizeStickerStrict(m[0]);
 
   try {
     const u = new URL(t);
     const parts = u.pathname.split("/").filter(Boolean);
     const kIdx = parts.indexOf("k");
     if (kIdx !== -1 && parts[kIdx + 1])
-      return normalizeSticker(parts[kIdx + 1]);
+      return normalizeStickerStrict(parts[kIdx + 1]);
     const qp = u.searchParams.get("voter") || u.searchParams.get("code");
-    if (qp) return normalizeSticker(qp);
+    if (qp) return normalizeStickerStrict(qp);
   } catch {
     /* not a URL */
   }
 
-  return normalizeSticker(t);
+  return normalizeStickerStrict(t);
 }
 
 // Treat bare prefixes as “too broad” so the list doesn’t explode
@@ -76,28 +63,6 @@ async function readJsonSafe(res: Response) {
     return { ok: false, error: "Request failed" };
   }
 }
-
-// Local feedback gate (fallback if server doesn't tell us)
-/*const LS_VOTES_KEY = "fb_votesGiven";
-const LS_LAST_FB_KEY = "fb_lastFeedbackAt";
-
-function shouldPromptFeedbackLocal(): boolean {
-  try {
-    const now = Date.now();
-    const last = Number(localStorage.getItem(LS_LAST_FB_KEY) || "0");
-    const votes = Number(localStorage.getItem(LS_VOTES_KEY) || "0") + 1;
-    const twentyDays = 20 * 24 * 60 * 60 * 1000;
-
-    if (votes < 2) return false; // never on first vote
-
-    const countOk = votes % 21 === 0;
-    const timeOk = last > 0 && now - last >= twentyDays;
-
-    return countOk || timeOk;
-  } catch {
-    return false;
-  }
-} */
 
 export default function VotePageClient() {
   const qs = useSearchParams();
@@ -137,7 +102,7 @@ export default function VotePageClient() {
     }
   }, []);
 
-  const voterFromQS = normalizeSticker(qs.get("voter") || "");
+  const voterFromQS = normalizeStickerStrict(qs.get("voter") || "") || "";
   const typeFromQS = (
     qs.get("type") === "goodCatch" ? "goodCatch" : "token"
   ) as "token" | "goodCatch";
@@ -154,6 +119,12 @@ export default function VotePageClient() {
   );
   const isWalsh = voterCompanyId === WALSH_COMPANY_ID;
 
+  // quick numeric code entry for target
+  const [targetDigits, setTargetDigits] = useState("");
+  useEffect(() => {
+    if (step === "target") setTargetDigits("");
+  }, [step]);
+
   // token type (Walsh only)
   const [voteType, setVoteType] = useState<"token" | "goodCatch">(typeFromQS);
 
@@ -168,9 +139,14 @@ export default function VotePageClient() {
   const [results, setResults] = useState<Worker[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
-  // scanner overlay control
-  const [scanOpen, setScanOpen] = useState(false);
+  // messages
   const [msg, setMsg] = useState("");
+
+  // keypad input ref
+  const numInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (step === "voter") numInputRef.current?.focus();
+  }, [step]);
 
   // lock state
   const [dailyLocked, setDailyLocked] = useState(false);
@@ -224,7 +200,6 @@ export default function VotePageClient() {
           setLockMsg(
             "Tokens are capped for today, but you can still send a Good Catch."
           );
-          // nudge UI to Good Catch
           setVoteType("goodCatch");
         }
         setDailyLocked(false);
@@ -255,7 +230,7 @@ export default function VotePageClient() {
       const code = extractStickerFromText(raw);
       if (!code) return;
 
-      setFinding(true); // ⬅️ start loading
+      setFinding(true);
       try {
         setVoterCode(code);
         const w = await apiLookup(code);
@@ -273,7 +248,7 @@ export default function VotePageClient() {
         await checkLimits(code, w.companyId);
         setStep("target");
       } finally {
-        setFinding(false); // ⬅️ stop loading
+        setFinding(false);
       }
     },
     [router]
@@ -311,7 +286,6 @@ export default function VotePageClient() {
       setSameCompanyCallout("");
       setTargetCode(code);
       setTargetName(w.fullName ?? "");
-      setScanOpen(false);
       setStep("confirm");
     },
     [voterProject, voterCode, voterCompanyId, showNoSelf, showNoSameCompany]
@@ -340,7 +314,6 @@ export default function VotePageClient() {
         const name = (json.target?.fullName || targetName || "").trim();
         setMsg(json.message || `Vote for ${name || code} (${code}) recorded`);
         setStep("done");
-        setScanOpen(false);
 
         // ---------- FEEDBACK GATE ----------
         try {
@@ -348,20 +321,18 @@ export default function VotePageClient() {
           const KEY_LAST = "fb_lastFeedbackAt";
 
           const prevVotes = Number(localStorage.getItem(KEY_VOTES) || "0");
-          const votes = prevVotes + 1; // increment for this vote
+          const votes = prevVotes + 1;
           const last = Number(localStorage.getItem(KEY_LAST) || "0");
           const twentyDays = 20 * 24 * 60 * 60 * 1000;
 
-          const serverSays = json?.promptFeedback === true; // only your API can force it
-          const countOk = votes % 21 === 0 && votes > 0; // 21, 42, 63, ...
+          const serverSays = json?.promptFeedback === true;
+          const countOk = votes % 21 === 0 && votes > 0;
           const timeOk = last > 0 && Date.now() - last >= twentyDays;
 
           if (serverSays || countOk || timeOk) {
-            // persist only when showing the modal
             localStorage.setItem(KEY_VOTES, String(votes));
             localStorage.setItem(KEY_LAST, String(Date.now()));
           } else {
-            // quietly persist the vote count but don't open the modal
             localStorage.setItem(KEY_VOTES, String(votes));
           }
         } catch {}
@@ -376,7 +347,6 @@ export default function VotePageClient() {
       ) {
         showNoSameCompany();
         setStep("target");
-        setScanOpen(false);
         return;
       }
       if (
@@ -397,17 +367,14 @@ export default function VotePageClient() {
       if (err.includes("self")) {
         showNoSelf();
         setStep("target");
-        setScanOpen(false);
         return;
       }
 
       setMsg(json?.error || "Error");
       setStep("target");
-      setScanOpen(false);
     } catch (e: any) {
       setMsg(e?.message || "Network error");
       setStep("target");
-      setScanOpen(false);
     }
   }
 
@@ -419,11 +386,6 @@ export default function VotePageClient() {
     setSameCompanyCallout("");
     setMsg("");
   }, [query, filterCompanyId]);
-
-  // Close camera when not on a scanning step
-  useEffect(() => {
-    if (step === "confirm" || step === "done") setScanOpen(false);
-  }, [step]);
 
   // 🌟 NEW: boot flow — show loading while checking voterFromQS
   useEffect(() => {
@@ -438,7 +400,7 @@ export default function VotePageClient() {
 
         if (!w) {
           router.replace(`/k/${voterFromQS}`);
-          return; // page will change; no need to clear boot
+          return; // page will change
         }
 
         setVoterCode(voterFromQS);
@@ -448,7 +410,6 @@ export default function VotePageClient() {
         setStep("target");
         setBooting(false);
       } else {
-        // No query param: brief grace so users still see a smooth boot
         setBootMsg("Loading…");
         setTimeout(() => mounted && setBooting(false), 250);
       }
@@ -469,29 +430,20 @@ export default function VotePageClient() {
         const res = await fetch("/api/companies", { cache: "no-store" });
         const json: any = await readJsonSafe(res);
         const raw = Array.isArray(json?.companies) ? json.companies : [];
-        setCompanies(
-          raw
-            .map((c: any) => ({ id: c.id ?? c, name: c.name ?? c.id ?? c }))
-            .filter(Boolean)
-        );
 
-        // normalize to { id, name }
         const normalized: Company[] = raw
           .map((c: any) => {
-            if (typeof c === "string") {
-              return { id: c, name: c };
-            }
-            // handle alternative server keys too
+            if (typeof c === "string") return { id: c, name: c };
             const id = c.id ?? c.companyId ?? c.slug ?? c.code ?? "";
             const name = c.name ?? c.displayName ?? c.title ?? id ?? "";
             return id ? { id, name } : null;
           })
           .filter(Boolean);
 
-        setCompanies(normalized);
+        if (!cancelled) setCompanies(normalized);
       } catch (err) {
         console.error("Failed to load companies", err);
-        setCompanies([]);
+        if (!cancelled) setCompanies([]);
       }
     })();
 
@@ -501,66 +453,52 @@ export default function VotePageClient() {
   }, [step]);
 
   // Live search — works with query OR just a company filter
-useEffect(() => {
-  if (step !== "target") return;
+  useEffect(() => {
+    if (step !== "target") return;
 
-  const q = (query || "").trim();
-  const tooBroad = isGenericCodePrefix(q);
+    const q = (query || "").trim();
+    const tooBroad = isGenericCodePrefix(q);
 
-  // nothing selected & no text → clear
-  if (!q && !filterCompanyId) {
-    setResults([]);
-    setIsSearching(false);
-    return;
-  }
-
-  // block NBK/JP prefixes like "NBK" / "JP-"
-  if (q && tooBroad) {
-    setResults([]);
-    setIsSearching(false);
-    return;
-  }
-
-  let cancelled = false;
-  setIsSearching(true);
-
-  const handle = setTimeout(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (filterCompanyId) params.set("companyId", filterCompanyId);
-      if (q) params.set("q", q); // if no q, it will list-by-company
-      params.set("limit", "50");
-
-      const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const j: any = await readJsonSafe(r);
-      if (!cancelled) {
-        setResults(Array.isArray(j?.workers) ? j.workers : []);
-      }
-    } catch {
-      if (!cancelled) setResults([]);
-    } finally {
-      if (!cancelled) setIsSearching(false);
+    if (!q && !filterCompanyId) {
+      setResults([]);
+      setIsSearching(false);
+      return;
     }
-  }, 250);
+    if (q && tooBroad) {
+      setResults([]);
+      setIsSearching(false);
+      return;
+    }
 
-  return () => {
-    cancelled = true;
-    clearTimeout(handle);
-  };
-}, [step, filterCompanyId, query]);
+    let cancelled = false;
+    setIsSearching(true);
 
+    const handle = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filterCompanyId) params.set("companyId", filterCompanyId);
+        if (q) params.set("q", q); // if no q, list-by-company
+        params.set("limit", "50");
 
-  // Stable scan callbacks
-  const onVoterScan = useCallback(
-    (t: string | null) => t && setVoter(t),
-    [setVoter]
-  );
-  const onTargetScan = useCallback(
-    (t: string | null) => t && setTarget(t),
-    [setTarget]
-  );
+        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const j: any = await readJsonSafe(r);
+        if (!cancelled) {
+          setResults(Array.isArray(j?.workers) ? j.workers : []);
+        }
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setIsSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [step, filterCompanyId, query]);
 
   /* ---------- UI ---------- */
 
@@ -585,11 +523,12 @@ useEffect(() => {
       </main>
     );
   }
- function filterCompanyOrQueryMessage() {
-  return filterCompanyId && !query.trim()
-    ? "No workers found for that company yet."
-    : "No matches found.";
-}
+
+  function filterCompanyOrQueryMessage() {
+    return filterCompanyId && !query.trim()
+      ? "No workers found for that company yet."
+      : "No matches found.";
+  }
 
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
@@ -641,102 +580,362 @@ useEffect(() => {
         </div>
       )}
 
-      {/* ...the rest of your component stays the same... */}
-
       {/* STEP 1 — voter */}
       {step === "voter" && (
-        <section className="space-y-3">
-          <div className="p-3 text-white">
-            <p className="text-sm">Enter your code to start.</p>
+        <section className="space-y-3 text-white">
+          <div className="p-3">
+            <p className="text-sm">
+              Select your project, then enter your number.
+            </p>
           </div>
 
+          {/* NBK / JP selection buttons */}
+          <div className="flex justify-center gap-4 mb-2">
+            {(["NBK", "JP"] as const).map((proj) => (
+              <button
+                key={proj}
+                type="button"
+                onClick={() => {
+                  const digits = voterCode.replace(/^(NBK|JP)-?/i, "");
+                  setVoterCode(proj + digits);
+                  numInputRef.current?.focus();
+                }}
+                className={`px-5 py-2 rounded font-bold border transition-colors ${
+                  voterCode.startsWith(proj)
+                    ? "bg-emerald-600 border-emerald-400 text-white"
+                    : "bg-neutral-800 border-neutral-600 text-gray-200 hover:bg-neutral-700"
+                }`}
+                aria-pressed={voterCode.startsWith(proj)}
+              >
+                {proj}
+              </button>
+            ))}
+          </div>
+
+          {/* Number entry + keypad */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               setVoter(voterCode);
             }}
-            className="space-y-2"
+            className="space-y-3"
           >
+            {/* auto-focus numeric input (mobile shows number pad) */}
             <input
-              className="w-full border rounded p-2"
-              placeholder="Enter your code (e.g., NBK1 / JP001)"
-              value={voterCode}
-              onChange={(e) => setVoterCode(e.target.value)}
-              inputMode="search"
-              autoCapitalize="characters"
-              autoCorrect="off"
+              ref={numInputRef}
+              type="tel"
+              className="w-full border rounded p-3 text-black text-center text-xl tracking-widest"
+              placeholder="Enter your number (e.g., 23)"
+              value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+                const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
+                setVoterCode(prefix + digits.padStart(4, "0"));
+              }}
+              inputMode="numeric"
+              pattern="\d{1,4}"
+              aria-label="Code number"
             />
+
+            {/* Onscreen keypad */}
+            <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto select-none">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "←", "0", "↵"].map(
+                (key) => (
+                  <button
+                    key={key}
+                    type={key === "↵" ? "submit" : "button"}
+                    onClick={(e) => {
+                      if (key === "↵") return; // submit handled by form
+                      e.preventDefault();
+                      const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
+                      const currentDigits = voterCode.replace(
+                        /^(NBK|JP)-?/i,
+                        ""
+                      );
+                      if (key === "←") {
+                        const next = currentDigits.slice(0, -1);
+                        setVoterCode(
+                          prefix + (next.padStart(4, "0") || "0000")
+                        );
+                        numInputRef.current?.focus();
+                        return;
+                      }
+                      if (/^\d$/.test(key)) {
+                        const next = (
+                          currentDigits.replace(/^0+/, "") + key
+                        ).slice(0, 4);
+                        setVoterCode(prefix + next.padStart(4, "0"));
+                        numInputRef.current?.focus();
+                      }
+                    }}
+                    className="py-3 rounded border text-lg bg-neutral-800 border-neutral-600 hover:bg-neutral-700"
+                  >
+                    {key}
+                  </button>
+                )
+              )}
+            </div>
+
+            {/* Preview + Return button */}
+            <div className="text-center text-sm text-gray-300">
+              Your code will be{" "}
+              <b>
+                {(voterCode.startsWith("JP") ? "JP" : "NBK") +
+                  voterCode.replace(/^(NBK|JP)-?/i, "").padStart(4, "0")}
+              </b>
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+            >
+              Return
+            </button>
           </form>
         </section>
       )}
 
       {/* STEP 2 — target */}
-      {step === "target" && (
-        <section className="space-y-3">
-          <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
-            <p className="text-sm">
-              Hello <b>{voterName || voterCode}</b>, who would you like to give
-              a virtual token to?
-            </p>
+{step === "target" && (
+  <section className="space-y-3">
+    <div className="rounded-lg border border-white/10 bg-neutral-900/80 backdrop-blur p-3 text-white isolate overflow-hidden">
+      <p className="text-sm">
+        Hello <b>{voterName || voterCode}</b>, who would you like to give a virtual token to?
+      </p>
 
-            {/* Token choice ONLY here, with extra spacing & dimming */}
-            {isWalsh ? (
-              <>
-                {isWalsh && tokenLocked && (
-                  <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 p-2 text-center text-sm">
-                    Tokens are capped today, but you can still send a{" "}
-                    <b>Good Catch</b>.
-                  </div>
-                )}
-                <div className="mt-6 mb-4 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
-                  <TypeBadge
-                    type="token"
-                    size="md"
-                    interactive={!tokenLocked} // 🔒 disable interaction if locked
-                    selected={voteType === "token"}
-                    dimmed={voteType !== "token" || tokenLocked}
-                    onClick={() => {
-                      if (tokenLocked) return; // ignore clicks
-                      setVoteType("token");
-                    }}
-                  />
-                  <TypeBadge
-                    type="goodCatch"
-                    size="md"
-                    interactive
-                    selected={voteType === "goodCatch"}
-                    dimmed={voteType !== "goodCatch"}
-                    onClick={() => setVoteType("goodCatch")}
-                  />
-                </div>
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
-                  Choose a token type, then enter code or search coworker below.
-                </p>
-              </>
-            ) : (
-              <div className="mt-3 flex justify-center">
-                <TypeBadge type="token" size="md" />
-              </div>
-            )}
+      {/* Token choice ONLY here, with extra spacing & dimming */}
+      {isWalsh ? (
+        <>
+          {isWalsh && tokenLocked && (
+            <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 p-2 text-center text-sm">
+              Tokens are capped today, but you can still send a <b>Good Catch</b>.
+            </div>
+          )}
+          <div className="mt-6 mb-4 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
+            <TypeBadge
+              type="token"
+              size="md"
+              interactive={!tokenLocked}
+              selected={voteType === "token"}
+              dimmed={voteType !== "token" || tokenLocked}
+              onClick={() => {
+                if (tokenLocked) return;
+                setVoteType("token");
+              }}
+            />
+            <TypeBadge
+              type="goodCatch"
+              size="md"
+              interactive
+              selected={voteType === "goodCatch"}
+              dimmed={voteType !== "goodCatch"}
+              onClick={() => setVoteType("goodCatch")}
+            />
           </div>
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
+            Choose a token type, then enter code or search coworker below.
+          </p>
+        </>
+      ) : (
+        <div className="mt-3 flex justify-center">
+          <TypeBadge type="token" size="md" />
+        </div>
+      )}
+    </div>
 
-          {/* Search + Company filter */}
-          <div className="rounded border p-3 space-y-2">
-            <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-              Search by name or code — or — filter by company.
-            </p>
+    {/* Project context + quick code entry (same-project enforced) */}
+    <div className="rounded border p-3 space-y-3">
+      {/* NBK / JP buttons (only current project enabled) */}
+      <div className="flex items-center justify-center gap-3">
+        {(["NBK", "JP"] as const).map((proj) => {
+          const selected = voterProject === proj;
+          return (
+            <button
+              key={proj}
+              type="button"
+              disabled={!selected}
+              onClick={() => {
+                if (!selected) {
+                  // gently alert; you can replace with a toast if you have one
+                  setMsg("Coworker must be assigned to the same project.");
+                }
+              }}
+              className={`px-4 py-2 rounded font-bold border ${
+                selected
+                  ? "bg-emerald-600 border-emerald-400 text-white"
+                  : "bg-neutral-800 border-neutral-600 text-gray-400 cursor-not-allowed"
+              }`}
+              aria-pressed={selected}
+              title={selected ? `Project: ${proj}` : "Coworker must be assigned to the same project"}
+            >
+              {proj}
+            </button>
+          );
+        })}
+      </div>
 
-            <form
-              onSubmit={(e) => {
+      {/* quick numeric target code entry (digits only) + keypad */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const digits = targetDigits.replace(/\D/g, "").slice(0, 4);
+          if (!digits) return;
+          const full = voterProject + digits.padStart(4, "0");
+          setTarget(full); // uses your existing validations
+        }}
+        className="space-y-2"
+      >
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <label className="block text-xs text-gray-400 mb-1">
+              Enter coworker number (same project)
+            </label>
+            <input
+              type="tel"
+              className="w-full border rounded p-2 text-black"
+              placeholder={`e.g., 23  → ${voterProject}0023`}
+              value={targetDigits}
+              onChange={(e) =>
+                setTargetDigits(e.target.value.replace(/\D/g, "").slice(0, 4))
+              }
+              inputMode="numeric"
+              aria-label="Coworker number"
+            />
+          </div>
+          <button
+            type="submit"
+            className="px-4 py-2 rounded bg-black text-white"
+            disabled={!targetDigits}
+            title={
+              !targetDigits
+                ? "Type a number"
+                : `Use ${voterProject}${targetDigits.padStart(4, "0")}`
+            }
+          >
+            Use Code
+          </button>
+        </div>
+
+        {/* Onscreen keypad */}
+        <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto select-none">
+          {["1","2","3","4","5","6","7","8","9","←","0","↵"].map((key) => (
+            <button
+              key={key}
+              type={key === "↵" ? "submit" : "button"}
+              onClick={(e) => {
+                if (key === "↵") return; // submit handled by form
                 e.preventDefault();
-                const raw = query.trim();
-                const asCode = extractStickerFromText(raw);
-                if (asCode) {
-                  setTarget(asCode);
+                if (key === "←") {
+                  setTargetDigits((d) => d.slice(0, -1));
                   return;
                 }
-                if (results.length === 1) {
-                  const w = results[0];
+                if (/^\d$/.test(key)) {
+                  setTargetDigits((d) => (d + key).slice(0, 4));
+                }
+              }}
+              className="py-3 rounded border text-lg bg-neutral-800 border-neutral-600 hover:bg-neutral-700"
+            >
+              {key}
+            </button>
+          ))}
+        </div>
+
+        {/* small preview */}
+        <div className="text-center text-xs text-gray-400">
+          {targetDigits
+            ? `Will use ${voterProject}${targetDigits.padStart(4, "0")}`
+            : `Waiting for digits…`}
+        </div>
+      </form>
+    </div>
+
+    {/* Search + Company filter (unchanged) */}
+    <div className="rounded border p-3 space-y-2">
+      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+        Or search by name/code — and/or filter by company.
+      </p>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          const raw = query.trim();
+          const asCode = extractStickerFromText(raw);
+          if (asCode) {
+            setTarget(asCode);
+            return;
+          }
+          if (results.length === 1) {
+            const w = results[0];
+            if (getProjectFromCode(w.code) !== voterProject) {
+              setMsg("Same-project only (NBK→NBK, JP→JP)");
+              return;
+            }
+            if (w.companyId === voterCompanyId) {
+              showNoSameCompany();
+              return;
+            }
+            if (w.code === voterCode) {
+              showNoSelf();
+              return;
+            }
+            setTargetCode(w.code);
+            setTargetName(w.fullName || "");
+            setSelfCallout("");
+            setSameCompanyCallout("");
+            setStep("confirm");
+          }
+        }}
+        className="space-y-2"
+      >
+        <input
+          className="w-full border rounded p-2"
+          placeholder={`Search name or code (e.g., Sam, ${voterProject}0012)`}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          inputMode="search"
+          autoCapitalize="characters"
+          autoCorrect="off"
+        />
+        <select
+          className="w-full border rounded p-2 bg-neutral-900 text-white"
+          value={filterCompanyId}
+          onChange={(e) => {
+            setFilterCompanyId(e.target.value);
+            (e.target as HTMLSelectElement).blur();
+          }}
+          title="Filter by company"
+        >
+          <option value="">All companies</option>
+          {companies.length === 0 ? (
+            <option disabled>(No companies loaded)</option>
+          ) : (
+            companies.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name ?? c.id}
+              </option>
+            ))
+          )}
+        </select>
+      </form>
+    </div>
+
+    {/* Results (auto-scroll target) */}
+    <div ref={resultsRef}>
+      {isSearching ? (
+        <p className="text-sm text-gray-500">Searching…</p>
+      ) : results.length > 0 ? (
+        <ul className="divide-y border rounded">
+          {results.map((w) => (
+            <li key={w.code} className="flex items-center justify-between p-2">
+              <div>
+                <div className="font-medium">
+                  {w.fullName || w.fullName || "(no name yet)"}
+                </div>
+                <div className="text-xs texSt-gray-600">{w.code}</div>
+              </div>
+              <button
+                className="px-3 py-1 rounded bg-black text-white"
+                onClick={() => {
                   if (getProjectFromCode(w.code) !== voterProject) {
                     setMsg("Same-project only (NBK→NBK, JP→JP)");
                     return;
@@ -750,109 +949,30 @@ useEffect(() => {
                     return;
                   }
                   setTargetCode(w.code);
-                  setTargetName(w.fullName || "");
+                  setTargetName(w.fullName || w.fullName || "");
                   setSelfCallout("");
                   setSameCompanyCallout("");
                   setStep("confirm");
-                }
-              }}
-              className="space-y-2"
-            >
-              <input
-                className="w-full border rounded p-2"
-                placeholder="Search name or code (Sam, nbk1, JP001)"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                inputMode="search"
-                autoCapitalize="characters"
-                autoCorrect="off"
-              />
-              <select
-                className="w-full border rounded p-2 bg-neutral-900 text-white"
-                value={filterCompanyId}
-                onChange={(e) => {
-                  setFilterCompanyId(e.target.value);
-                  (e.target as HTMLSelectElement).blur();
                 }}
-                title="Filter by company"
               >
-                <option value="">All companies</option>
-                {companies.length === 0 ? (
-                  <option disabled>(No companies loaded)</option>
-                ) : (
-                  companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name ?? c.id}
-                    </option>
-                  ))
-                )}
-              </select>
-            </form>
-          </div>
-
-          {/* Results (auto-scroll target) */}
-          <div ref={resultsRef}>
-            {isSearching ? (
-              <p className="text-sm text-gray-500">Searching…</p>
-            ) : results.length > 0 ? (
-              <ul className="divide-y border rounded">
-                {results.map((w) => (
-                  <li
-                    key={w.code}
-                    className="flex items-center justify-between p-2"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {w.fullName || w.fullName || "(no name yet)"}
-                      </div>
-                      <div className="text-xs texSt-gray-600">{w.code}</div>
-                    </div>
-                    <button
-                      className="px-3 py-1 rounded bg-black text-white"
-                      onClick={() => {
-                        if (getProjectFromCode(w.code) !== voterProject) {
-                          setMsg("Same-project only (NBK→NBK, JP→JP)");
-                          return;
-                        }
-                        if (w.companyId === voterCompanyId) {
-                          showNoSameCompany();
-                          return;
-                        }
-                        if (w.code === voterCode) {
-                          showNoSelf();
-                          return;
-                        }
-                        setTargetCode(w.code);
-                        setTargetName(w.fullName || w.fullName || "");
-                        setSelfCallout("");
-                        setSameCompanyCallout("");
-                        setStep("confirm");
-                      }}
-                    >
-                      Select
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : !query.trim() ? (
-              // nothing typed yet → show a gentle prompt (no list)
-              <p className="text-sm text-gray-500">
-                Start typing a name or code to see results…
-              </p>
-            ) : isGenericCodePrefix(query) && !filterCompanyId ? (
-              // user typed just NBK / JP / NBK- / JP-
-              <p className="text-sm text-gray-500 mt-2">
-                Add a few digits after NBK/JP (e.g. NBK12) or type a name.
-              </p>
-            ) : (
-              // user typed something but no matches
-              <p className="text-sm text-gray-500">
-                {filterCompanyOrQueryMessage()}
-              </p>
-            )}
-          </div>
-        </section>
+                Select
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : !query.trim() ? (
+        <p className="text-sm text-gray-500">Start typing a name or code to see results…</p>
+      ) : isGenericCodePrefix(query) && !filterCompanyId ? (
+        <p className="text-sm text-gray-500 mt-2">
+          Add a few digits after NBK/JP (e.g. NBK12) or type a name.
+        </p>
+      ) : (
+        <p className="text-sm text-gray-500">{filterCompanyOrQueryMessage()}</p>
       )}
+    </div>
+  </section>
+)}
+
 
       {/* STEP 3 — confirm (no badges here) */}
       {step === "confirm" && (
