@@ -579,12 +579,11 @@ export default function VotePageClient() {
           </div>
         </div>
       )}
-
       {/* STEP 1 — voter */}
       {step === "voter" && (
-        <section className="space-y-4 text-white">
+        <section className="space-y-4 text-gray-900 dark:text-gray-100">
           <div className="p-3">
-            <p className="text-sm">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
               Select your project, then tap to enter your number.
             </p>
           </div>
