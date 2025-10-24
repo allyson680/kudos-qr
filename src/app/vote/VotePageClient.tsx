@@ -11,7 +11,7 @@ import {
 } from "@/lib/outOfTokens";
 
 type Worker = { code: string; fullName: string; companyId: string };
-type Company = { id: string; name: string };
+type Company = { id: string; name?: string };
 
 const WALSH_COMPANY_ID = "WALSH";
 
@@ -342,7 +342,6 @@ export default function VotePageClient() {
             localStorage.setItem(KEY_VOTES, String(votes));
           }
         } catch {}
-        
 
         return;
       }
@@ -438,65 +437,70 @@ export default function VotePageClient() {
   }, [voterFromQS, router]);
 
   // Load companies for the filter dropdown when entering the target step
- useEffect(() => {
-  if (step !== "target") return;
+  useEffect(() => {
+    if (step !== "target") return;
 
-  (async () => {
-    try {
-      // This route returns: { companies, existing }
-      const res = await fetch("/api/register", { cache: "no-store" });
-      const json: any = await readJsonSafe(res);
-      setCompanies(Array.isArray(json?.companies) ? json.companies : []);
-    } catch (err) {
-      console.error("Failed to load companies", err);
-      setCompanies([]);
-    }
-  })();
-}, [step]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/register", { cache: "no-store" });
+        const json: any = await readJsonSafe(res);
+        if (!cancelled) {
+          setCompanies(Array.isArray(json?.companies) ? json.companies : []);
+        }
+      } catch (err) {
+        console.error("Failed to load companies", err);
+        if (!cancelled) setCompanies([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [step]);
 
   // Live search — starts after typing the first letter
-useEffect(() => {
-  if (step !== "target") return;
+  useEffect(() => {
+    if (step !== "target") return;
 
-  const q = (query || "").trim();
-  const tooBroad = isGenericCodePrefix(q);
+    const q = (query || "").trim();
+    const tooBroad = isGenericCodePrefix(q);
 
-  // ⛔️ if empty, too broad, or no filter → don’t show anything yet
-  if (!q || tooBroad) {
-    setResults([]);
-    setIsSearching(false);
-    return;
-  }
-
-  let cancelled = false;
-  setIsSearching(true);
-
-  // debounce small delay for smooth typing
-  const handle = setTimeout(async () => {
-    try {
-      const params = new URLSearchParams();
-      if (filterCompanyId) params.set("companyId", filterCompanyId);
-      params.set("q", q);
-
-      const r = await fetch(`/api/admin/workers?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const j: any = await readJsonSafe(r);
-      if (!cancelled) {
-        setResults(Array.isArray(j?.workers) ? j.workers : []);
-      }
-    } catch {
-      if (!cancelled) setResults([]);
-    } finally {
-      if (!cancelled) setIsSearching(false);
+    // ⛔️ if empty, too broad, or no filter → don’t show anything yet
+    if (!q || tooBroad) {
+      setResults([]);
+      setIsSearching(false);
+      return;
     }
-  }, 250);
 
-  return () => {
-    cancelled = true;
-    clearTimeout(handle);
-  };
-}, [step, filterCompanyId, query]);
+    let cancelled = false;
+    setIsSearching(true);
+
+    // debounce small delay for smooth typing
+    const handle = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filterCompanyId) params.set("companyId", filterCompanyId);
+        params.set("q", q);
+
+        const r = await fetch(`/api/admin/workers?${params.toString()}`, {
+          cache: "no-store",
+        });
+        const j: any = await readJsonSafe(r);
+        if (!cancelled) {
+          setResults(Array.isArray(j?.workers) ? j.workers : []);
+        }
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setIsSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [step, filterCompanyId, query]);
 
   // Stable scan callbacks
   const onVoterScan = useCallback(
@@ -531,27 +535,25 @@ useEffect(() => {
       </main>
     );
   }
-function filterCompanyOrQueryMessage() {
-  return filterCompanyId && !query.trim()
-    ? "Start typing a name or code (filtered by company)…"
-    : "No matches found.";
-}
-    return (
+  function filterCompanyOrQueryMessage() {
+    return filterCompanyId && !query.trim()
+      ? "Start typing a name or code (filtered by company)…"
+      : "No matches found.";
+  }
+  return (
     <main className="p-4 max-w-md mx-auto space-y-4">
       <div ref={topRef} />
 
       {finding && (
-  <div className="fixed inset-0 z-50 grid place-items-center bg-black/60">
-    <div className="rounded-xl bg-white px-6 py-5 text-center shadow-lg">
-      <p className="flex items-center justify-center gap-2 text-base font-semibold text-gray-900">
-  <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-green-500"></span>
-  Finding your account…
-</p>
-
-    </div>
-  </div>
-)}
-
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60">
+          <div className="rounded-xl bg-white px-6 py-5 text-center shadow-lg">
+            <p className="flex items-center justify-center gap-2 text-base font-semibold text-gray-900">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-green-500"></span>
+              Finding your account…
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Big callouts */}
       {selfCallout && (
@@ -598,22 +600,22 @@ function filterCompanyOrQueryMessage() {
           </div>
 
           <form
-  onSubmit={(e) => {
-    e.preventDefault();
-    setVoter(voterCode);
-  }}
-  className="space-y-2"
->
-  <input
-    className="w-full border rounded p-2"
-    placeholder="Enter your code (e.g., NBK1 / JP001)"
-    value={voterCode}
-    onChange={(e) => setVoterCode(e.target.value)}
-    inputMode="search"
-    autoCapitalize="characters"
-    autoCorrect="off"
-  />
-</form>
+            onSubmit={(e) => {
+              e.preventDefault();
+              setVoter(voterCode);
+            }}
+            className="space-y-2"
+          >
+            <input
+              className="w-full border rounded p-2"
+              placeholder="Enter your code (e.g., NBK1 / JP001)"
+              value={voterCode}
+              onChange={(e) => setVoterCode(e.target.value)}
+              inputMode="search"
+              autoCapitalize="characters"
+              autoCorrect="off"
+            />
+          </form>
         </section>
       )}
 
@@ -717,70 +719,76 @@ function filterCompanyOrQueryMessage() {
                 <option value="">All companies</option>
                 {companies.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.name ?? c.id}
                   </option>
                 ))}
               </select>
             </form>
-          </div>  
-
-            {/* Results (auto-scroll target) */}
-           <div ref={resultsRef}>
-  {isSearching ? (
-    <p className="text-sm text-gray-500">Searching…</p>
-  ) : results.length > 0 ? (
-    <ul className="divide-y border rounded">
-      {results.map((w) => (
-        <li key={w.code} className="flex items-center justify-between p-2">
-          <div>
-            <div className="font-medium">{w.fullName || w.fullName || "(no name yet)"}</div>
-            <div className="text-xs texSt-gray-600">{w.code}</div>
           </div>
-          <button
-            className="px-3 py-1 rounded bg-black text-white"
-            onClick={() => {
-              if (getProjectFromCode(w.code) !== voterProject) {
-                setMsg("Same-project only (NBK→NBK, JP→JP)");
-                return;
-              }
-              if (w.companyId === voterCompanyId) {
-                showNoSameCompany();
-                return;
-              }
-              if (w.code === voterCode) {
-                showNoSelf();
-                return;
-              }
-              setTargetCode(w.code);
-              setTargetName(w.fullName || w.fullName || "");
-              setSelfCallout("");
-              setSameCompanyCallout("");
-              setStep("confirm");
-            }}
-          >
-            Select
-          </button>
-        </li>
-      ))}
-    </ul>
-  ) : !query.trim() ? (
-    // nothing typed yet → show a gentle prompt (no list)
-    <p className="text-sm text-gray-500">Start typing a name or code to see results…</p>
-  ) : isGenericCodePrefix(query) && !filterCompanyId ? (
-    // user typed just NBK / JP / NBK- / JP-
-    <p className="text-sm text-gray-500 mt-2">
-      Add a few digits after NBK/JP (e.g. NBK12) or type a name.
-    </p>
-  ) : (
-    // user typed something but no matches
-    <p className="text-sm text-gray-500">
-      {filterCompanyOrQueryMessage()}
-    </p>
-  )}
-</div>
-</section>
-)}
 
+          {/* Results (auto-scroll target) */}
+          <div ref={resultsRef}>
+            {isSearching ? (
+              <p className="text-sm text-gray-500">Searching…</p>
+            ) : results.length > 0 ? (
+              <ul className="divide-y border rounded">
+                {results.map((w) => (
+                  <li
+                    key={w.code}
+                    className="flex items-center justify-between p-2"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {w.fullName || w.fullName || "(no name yet)"}
+                      </div>
+                      <div className="text-xs texSt-gray-600">{w.code}</div>
+                    </div>
+                    <button
+                      className="px-3 py-1 rounded bg-black text-white"
+                      onClick={() => {
+                        if (getProjectFromCode(w.code) !== voterProject) {
+                          setMsg("Same-project only (NBK→NBK, JP→JP)");
+                          return;
+                        }
+                        if (w.companyId === voterCompanyId) {
+                          showNoSameCompany();
+                          return;
+                        }
+                        if (w.code === voterCode) {
+                          showNoSelf();
+                          return;
+                        }
+                        setTargetCode(w.code);
+                        setTargetName(w.fullName || w.fullName || "");
+                        setSelfCallout("");
+                        setSameCompanyCallout("");
+                        setStep("confirm");
+                      }}
+                    >
+                      Select
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : !query.trim() ? (
+              // nothing typed yet → show a gentle prompt (no list)
+              <p className="text-sm text-gray-500">
+                Start typing a name or code to see results…
+              </p>
+            ) : isGenericCodePrefix(query) && !filterCompanyId ? (
+              // user typed just NBK / JP / NBK- / JP-
+              <p className="text-sm text-gray-500 mt-2">
+                Add a few digits after NBK/JP (e.g. NBK12) or type a name.
+              </p>
+            ) : (
+              // user typed something but no matches
+              <p className="text-sm text-gray-500">
+                {filterCompanyOrQueryMessage()}
+              </p>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* STEP 3 — confirm (no badges here) */}
       {step === "confirm" && (
