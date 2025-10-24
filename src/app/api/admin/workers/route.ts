@@ -1,66 +1,96 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getDb } from "@/lib/firebaseAdmin";
-import { normalizeSticker, toDashed } from "@/lib/codeUtils";
+import { normalizeStickerStrict } from "@/lib/codeUtils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-
-export async function GET(req: NextRequest) {
-  const db = getDb();
+/**
+ * GET /api/admin/workers
+ * Query params:
+ *   - companyId?: string   (if present, limit to this company)
+ *   - q?: string           (name or code; if absent and companyId present, list first N)
+ *   - limit?: number       (default 50, max 200)
+ *
+ * Behavior:
+ *   - If q looks like an NBK/JP code (1–4 digits), we return that exact code (if exists) and
+ *     also do a light prefix search by number within the same project.
+ *   - Otherwise, we do a case-insensitive name "starts with" search via fullNameLower.
+ *   - If q is empty but companyId is present, we list the first N workers for that company.
+ */
+export async function GET(req: Request) {
   try {
-    const companyId = (req.nextUrl.searchParams.get("companyId") || "").trim();
-    const q = (req.nextUrl.searchParams.get("q") || "").trim();
+    const db = getDb();
+    const { searchParams } = new URL(req.url);
+    const companyId = (searchParams.get("companyId") || "").trim();
+    const rawQ = (searchParams.get("q") || "").trim();
+    const limit = Math.min(Number(searchParams.get("limit") || 50), 200);
 
-    let ref: FirebaseFirestore.Query = db.collection("workers");
+    // 1) No q but company selected -> list-by-company (sorted by name)
+    if (!rawQ && companyId) {
+      // ⚠️ Firestore will likely ask for a composite index: companyId + fullNameLower
+      const snap = await db
+        .collection("workers")
+        .where("companyId", "==", companyId)
+        .orderBy("fullNameLower")
+        .limit(limit)
+        .get();
 
-    if (companyId) {
-      ref = ref.where("companyId", "==", companyId);
+      const workers = snap.docs.map((d) => ({
+        code: d.get("code"),
+        fullName: d.get("fullName") || "",
+        companyId: d.get("companyId") || "",
+      }));
+
+      return NextResponse.json({ ok: true, workers });
     }
 
-    // If there's a query, try code first (NBK2 -> NBK0002), then fall back to name filtering
-    if (q) {
-      const qUpper = q.toUpperCase();
-      const qPlain = qUpper.replace(/[^A-Z0-9]/g, "");
+    // 2) If q looks like a code, return that worker directly (fast path)
+    const asCode = normalizeStickerStrict(rawQ);
+    if (asCode) {
+      const ref = db.collection("workers").doc(asCode);
+      const doc = await ref.get();
+      const exact = doc.exists
+        ? [{
+            code: doc.get("code"),
+            fullName: doc.get("fullName") || "",
+            companyId: doc.get("companyId") || "",
+          }]
+        : [];
 
-      // Is it "code-like" at all? (e.g., NBK12, JP001, etc.)
-      if (/^[A-Z]+\d+$/.test(qPlain)) {
-        const norm = normalizeSticker(qUpper); // pads to NBK0002, etc.
-        // Try no-dash id first
-        let doc = await db.collection("workers").doc(norm).get();
-        if (!doc.exists) {
-          // Try dashed legacy id
-          const dashed = toDashed(norm);
-          doc = await db.collection("workers").doc(dashed).get();
-        }
-        if (doc.exists) {
-          return NextResponse.json({
-            workers: [{ code: doc.id, ...(doc.data() as any) }],
-          });
-        }
-        // If we didn't find by code, we STILL fall through to name search
-      }
+      // Optionally, if companyId is present, ensure the match respects the filter
+      const filtered = companyId ? exact.filter(w => w.companyId === companyId) : exact;
 
-      // Name/code contains search (client-side filter over a page)
-      // For production-scale search, consider storing "fullNameLower" and adding indexes.
-      const snap = await ref.limit(500).get();
-      const term = q.toLowerCase();
-      const items = snap.docs
-        .map(d => ({ code: d.id, ...(d.data() as any) }))
-        .filter((w: any) => {
-          const name = String(w.fullName || "").toLowerCase();
-          const codeStr = String(w.code || "");
-          return name.includes(term) || codeStr.includes(qUpper);
-        });
-
-      return NextResponse.json({ workers: items });
+      return NextResponse.json({ ok: true, workers: filtered });
     }
 
-    // No q: list by company (or first page if neither set)
-    const snap = await ref.limit(500).get();
-    const items = snap.docs.map(d => ({ code: d.id, ...(d.data() as any) }));
-    return NextResponse.json({ workers: items });
+    // 3) Name search: case-insensitive "starts with" using fullNameLower
+    // Build lowercased query bounds, e.g., "sam" -> ["sam", "sam\uffff"]
+    const qLower = rawQ.toLowerCase();
+    const startAt = qLower;
+    const endAt = qLower + "\uf8ff"; // typical unicode high sentinel
+
+    let query: FirebaseFirestore.Query = db.collection("workers");
+    if (companyId) query = query.where("companyId", "==", companyId);
+    
+    query = query
+      .orderBy("fullNameLower")
+      .startAt(startAt)
+      .endAt(endAt)
+      .limit(limit);
+
+    // ⚠️ Firestore will likely require a composite index for (companyId, fullNameLower)
+    const snap = await query.get();
+
+    const workers = snap.docs.map((d) => ({
+      code: d.get("code"),
+      fullName: d.get("fullName") || "",
+      companyId: d.get("companyId") || "",
+    }));
+
+    return NextResponse.json({ ok: true, workers });
   } catch (e: any) {
-    return NextResponse.json({ workers: [], error: e?.message || "Error" }, { status: 500 });
+    // If Firestore needs an index, you'll see a FAILED_PRECONDITION here with a console link
+    return NextResponse.json({ ok: false, error: e?.message || "Search failed" }, { status: 500 });
   }
 }

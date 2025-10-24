@@ -507,16 +507,14 @@ useEffect(() => {
   const q = (query || "").trim();
   const tooBroad = isGenericCodePrefix(q);
 
-  // ⛔ nothing to do only when there's no query AND no company chosen
+  // nothing selected & no text → clear
   if (!q && !filterCompanyId) {
     setResults([]);
     setIsSearching(false);
     return;
   }
 
-  // we'll search if:
-  // - there's a query that's not too broad, OR
-  // - there's a company selected (even if query is empty)
+  // block NBK/JP prefixes like "NBK" / "JP-"
   if (q && tooBroad) {
     setResults([]);
     setIsSearching(false);
@@ -529,22 +527,14 @@ useEffect(() => {
   const handle = setTimeout(async () => {
     try {
       const params = new URLSearchParams();
-
-      // include company filter if selected
       if (filterCompanyId) params.set("companyId", filterCompanyId);
-
-      // include query only if present; otherwise we’re doing a simple list-by-company
-      if (q) params.set("q", q);
-
-      // helpful limits for list-by-company
+      if (q) params.set("q", q); // if no q, it will list-by-company
       params.set("limit", "50");
-      params.set("order", "fullNameAsc");
 
       const r = await fetch(`/api/admin/workers?${params.toString()}`, {
         cache: "no-store",
       });
       const j: any = await readJsonSafe(r);
-
       if (!cancelled) {
         setResults(Array.isArray(j?.workers) ? j.workers : []);
       }
@@ -595,11 +585,12 @@ useEffect(() => {
       </main>
     );
   }
-  function filterCompanyOrQueryMessage() {
-    return filterCompanyId && !query.trim()
-      ? "Start typing a name or code (filtered by company)…"
-      : "No matches found.";
-  }
+ function filterCompanyOrQueryMessage() {
+  return filterCompanyId && !query.trim()
+    ? "No workers found for that company yet."
+    : "No matches found.";
+}
+
   return (
     <main className="p-4 max-w-md mx-auto space-y-4">
       <div ref={topRef} />
