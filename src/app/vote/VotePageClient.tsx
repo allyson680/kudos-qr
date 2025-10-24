@@ -468,14 +468,31 @@ export default function VotePageClient() {
       try {
         const res = await fetch("/api/register", { cache: "no-store" });
         const json: any = await readJsonSafe(res);
-        if (!cancelled) {
-          setCompanies(Array.isArray(json?.companies) ? json.companies : []);
-        }
+
+        if (cancelled) return;
+
+        const raw = Array.isArray(json?.companies) ? json.companies : [];
+
+        // normalize to { id, name }
+        const normalized: Company[] = raw
+          .map((c: any) => {
+            if (typeof c === "string") {
+              return { id: c, name: c };
+            }
+            // handle alternative server keys too
+            const id = c.id ?? c.companyId ?? c.slug ?? c.code ?? "";
+            const name = c.name ?? c.displayName ?? c.title ?? id ?? "";
+            return id ? { id, name } : null;
+          })
+          .filter(Boolean);
+
+        setCompanies(normalized);
       } catch (err) {
         console.error("Failed to load companies", err);
-        if (!cancelled) setCompanies([]);
+        setCompanies([]);
       }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -749,11 +766,15 @@ export default function VotePageClient() {
                 title="Filter by company"
               >
                 <option value="">All companies</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name ?? c.id}
-                  </option>
-                ))}
+                {companies.length === 0 ? (
+                  <option disabled>(No companies loaded)</option>
+                ) : (
+                  companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name ?? c.id}
+                    </option>
+                  ))
+                )}
               </select>
             </form>
           </div>
