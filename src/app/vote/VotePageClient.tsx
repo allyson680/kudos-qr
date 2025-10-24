@@ -581,53 +581,90 @@ export default function VotePageClient() {
       )}
 
       {/* STEP 1 — voter */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          setVoter(voterCode);
-        }}
-        className="space-y-4"
-      >
-        {/* Hidden input that triggers the mobile number pad */}
-        <input
-          ref={numInputRef}
-          type="tel"
-          inputMode="numeric"
-          className="sr-only"
-          value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
-          onChange={(e) => {
-            const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
-            const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
-            setVoterCode(prefix + digits.padStart(4, "0"));
-          }}
-          aria-label="Enter your number"
-        />
+{step === "voter" && (
+  <section className="space-y-4 text-white">
+    <div className="p-3">
+      <p className="text-sm">Select your project, then tap to enter your number.</p>
+    </div>
 
-        {/* Tap-to-enter button that shows live code */}
+    {/* NBK / JP selection buttons */}
+    <div className="flex justify-center gap-4">
+      <label className="block text-xs text-gray-400 mb-1">
+                    *Default set to same project*
+                  </label>
+      {(["NBK", "JP"] as const).map((proj) => (
         <button
+          key={proj}
           type="button"
-          onClick={() => numInputRef.current?.focus()} // opens phone keypad
-          className="w-full py-4 rounded-lg border border-emerald-500 text-emerald-200 bg-neutral-900 text-lg font-semibold hover:bg-neutral-800"
-          aria-live="polite"
+          onClick={() => {
+            const digits = voterCode
+              .replace(/^(NBK|JP)-?/i, "")
+              .replace(/\D/g, "")
+              .slice(0, 4);
+            setVoterCode(proj + digits.padStart(4, "0"));
+            numInputRef.current?.focus();
+          }}
+          className={`px-5 py-2 rounded font-bold border transition-colors ${
+            voterCode.startsWith(proj)
+              ? "bg-emerald-600 border-emerald-400 text-white"
+              : "bg-neutral-800 border-neutral-600 text-gray-200 hover:bg-neutral-700"
+          }`}
+          aria-pressed={voterCode.startsWith(proj)}
         >
-          {(() => {
-            const digits = voterCode.replace(/^(NBK|JP)-?/i, "");
-            const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
-            return digits
-              ? `Code: ${prefix}${digits.padStart(4, "0")} — tap to edit`
-              : "Tap to enter your number";
-          })()}
+          {proj}
         </button>
+      ))}
+    </div>
 
-        {/* (removed the old preview div so nothing gets hidden by the keyboard) */}
+    {/* Hidden input + button that shows live code */}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        setVoter(voterCode);
+      }}
+      className="space-y-4"
+    >
+      {/* hidden input to trigger native number pad */}
+      <input
+        ref={numInputRef}
+        type="tel"
+        inputMode="numeric"
+        className="sr-only"
+        value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
+        onChange={(e) => {
+          const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+          const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
+          setVoterCode(prefix + digits.padStart(4, "0"));
+        }}
+        aria-label="Enter your number"
+      />
 
-        <button
-          type="submit"
-          className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-        >
-          Continue
-        </button>
-      </form>
+      {/* tap-to-enter button that stays visible and shows live code */}
+      <button
+        type="button"
+        onClick={() => numInputRef.current?.focus()}
+        className="w-full py-4 rounded-lg border border-emerald-500 text-emerald-200 bg-neutral-900 text-lg font-semibold hover:bg-neutral-800"
+        aria-live="polite"
+      >
+        {(() => {
+          const digits = voterCode.replace(/^(NBK|JP)-?/i, "");
+          const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
+          return digits
+            ? `Code: ${prefix}${digits.padStart(4, "0")} — tap to edit`
+            : "Tap to enter your number";
+        })()}
+      </button>
+
+      <button
+        type="submit"
+        className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+      >
+        Continue
+      </button>
+    </form>
+  </section>
+)}
+
 
       {/* STEP 2 — target */}
       {step === "target" && (
@@ -731,7 +768,7 @@ export default function VotePageClient() {
               <div className="flex items-end gap-2">
                 <div className="flex-1">
                   <label className="block text-xs text-gray-400 mb-1">
-                    Enter coworker number (same project)
+                    Enter coworker number or search for them below.
                   </label>
                   <input
                     type="tel"
@@ -767,7 +804,7 @@ export default function VotePageClient() {
           {/* Search + Company filter (unchanged) */}
           <div className="rounded border p-3 space-y-2">
             <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-              Or search by name/code — and/or filter by company.
+              Search by name or filter by company.
             </p>
 
             <form
@@ -804,7 +841,7 @@ export default function VotePageClient() {
             >
               <input
                 className="w-full border rounded p-2"
-                placeholder={`Search name or code (e.g., Sam, ${voterProject}0012)`}
+                placeholder={`Search by name`}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 inputMode="search"
