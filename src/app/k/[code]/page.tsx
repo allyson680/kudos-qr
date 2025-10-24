@@ -455,6 +455,13 @@ export default function CodePage({ params }: { params: { code: string } }) {
             >
               Continue
             </button>
+            <button
+              type="button"
+              onClick={() => (window.location.href = "/")}
+              className="w-full py-2 rounded border border-gray-400 text-gray-700 dark:text-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-colors"
+            >
+              Cancel
+            </button>
           </>
         )}
 
@@ -498,9 +505,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
             </div>
 
             <div className="rounded border overflow-hidden">
-              <div className="aspect-[4/3] bg-black/5">
-               
-              </div>
+              <div className="aspect-[4/3] bg-black/5"></div>
             </div>
 
             <div className="flex gap-2">

@@ -703,8 +703,9 @@ export default function VotePageClient() {
                     onClick={() => setVoteType("goodCatch")}
                   />
                 </div>
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 text-center mt-1">
-                  Choose a token type, then enter code or search coworker below.
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 text-center mt-1">
+                  Choose a token type, then enter your coworker’s code or search
+                  by name.
                 </p>
               </>
             ) : (
@@ -752,9 +753,10 @@ export default function VotePageClient() {
             >
               <div className="flex items-end gap-2">
                 <div className="flex-1">
-                  <label className="block text-xs text-gray-400 mb-1">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 text-center">
                     Enter coworker number or search for them below.
-                  </label>
+                  </p>
+
                   <input
                     type="tel"
                     className="w-full border border-emerald-400 rounded p-3 text-black text-center text-lg bg-white"
