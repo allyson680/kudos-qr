@@ -175,6 +175,8 @@ export default function VotePageClient() {
   // lock state
   const [dailyLocked, setDailyLocked] = useState(false);
   const [lockMsg, setLockMsg] = useState("");
+  // token-only lock (Walsh can still send Good Catch)
+  const [tokenLocked, setTokenLocked] = useState(false);
 
   const lockOut = (kind: LockKind = "daily") => {
     setDailyLocked(true);
@@ -213,17 +215,33 @@ export default function VotePageClient() {
           ? +j.companyRemaining
           : companyMonthly;
 
-      if (companyAny <= 0) {
-        lockOut("company");
+      const tokensCapped = companyAny <= 0 || daily <= 0;
+
+      // Walsh: only lock Tokens, allow Good Catch
+      if (companyId === WALSH_COMPANY_ID) {
+        setTokenLocked(tokensCapped);
+        if (tokensCapped) {
+          setLockMsg(
+            "Tokens are capped for today, but you can still send a Good Catch."
+          );
+          // nudge UI to Good Catch
+          setVoteType("goodCatch");
+        }
+        setDailyLocked(false);
         return;
       }
-      if (daily <= 0) {
-        lockOut("daily");
+
+      // Non-Walsh: full lock when capped
+      if (tokensCapped) {
+        lockOut(companyAny <= 0 ? "company" : "daily");
         return;
       }
       setDailyLocked(false);
+      setTokenLocked(false);
     } catch {
+      // fail-open: don't lock the whole app
       setDailyLocked(false);
+      setTokenLocked(false);
     }
   }
 
@@ -301,6 +319,11 @@ export default function VotePageClient() {
 
   async function submitVote() {
     setMsg("");
+    if (isWalsh && tokenLocked && voteType === "token") {
+      setMsg("Token limit reached today — choose Good Catch instead.");
+      return;
+    }
+
     try {
       const body: any = { voterCode, targetCode };
       if (isWalsh) body.voteType = voteType;
@@ -631,14 +654,23 @@ export default function VotePageClient() {
             {/* Token choice ONLY here, with extra spacing & dimming */}
             {isWalsh ? (
               <>
+                {isWalsh && tokenLocked && (
+                  <div className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 p-2 text-center text-sm">
+                    Tokens are capped today, but you can still send a{" "}
+                    <b>Good Catch</b>.
+                  </div>
+                )}
                 <div className="mt-6 mb-4 flex flex-wrap items-center justify-center gap-6 max-w-xs mx-auto">
                   <TypeBadge
                     type="token"
                     size="md"
-                    interactive
+                    interactive={!tokenLocked} // 🔒 disable interaction if locked
                     selected={voteType === "token"}
-                    dimmed={voteType !== "token"}
-                    onClick={() => setVoteType("token")}
+                    dimmed={voteType !== "token" || tokenLocked}
+                    onClick={() => {
+                      if (tokenLocked) return; // ignore clicks
+                      setVoteType("token");
+                    }}
                   />
                   <TypeBadge
                     type="goodCatch"
