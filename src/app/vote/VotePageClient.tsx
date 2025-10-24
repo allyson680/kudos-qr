@@ -466,12 +466,14 @@ export default function VotePageClient() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/register", { cache: "no-store" });
+        const res = await fetch("/api/companies", { cache: "no-store" });
         const json: any = await readJsonSafe(res);
-
-        if (cancelled) return;
-
         const raw = Array.isArray(json?.companies) ? json.companies : [];
+        setCompanies(
+          raw
+            .map((c: any) => ({ id: c.id ?? c, name: c.name ?? c.id ?? c }))
+            .filter(Boolean)
+        );
 
         // normalize to { id, name }
         const normalized: Company[] = raw
