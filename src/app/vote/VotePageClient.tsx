@@ -580,120 +580,78 @@ export default function VotePageClient() {
         </div>
       )}
 
-      {/* STEP 1 — voter */}
-      {step === "voter" && (
-        <section className="space-y-3 text-white">
-          <div className="p-3">
-            <p className="text-sm">
-              Select your project, then enter your number.
-            </p>
-          </div>
+     {/* STEP 1 — voter */}
+{step === "voter" && (
+  <section className="space-y-3 text-white">
+    <div className="p-3">
+      <p className="text-sm">Select your project, then enter your number.</p>
+    </div>
 
-          {/* NBK / JP selection buttons */}
-          <div className="flex justify-center gap-4 mb-2">
-            {(["NBK", "JP"] as const).map((proj) => (
-              <button
-                key={proj}
-                type="button"
-                onClick={() => {
-                  const digits = voterCode.replace(/^(NBK|JP)-?/i, "");
-                  setVoterCode(proj + digits);
-                  numInputRef.current?.focus();
-                }}
-                className={`px-5 py-2 rounded font-bold border transition-colors ${
-                  voterCode.startsWith(proj)
-                    ? "bg-emerald-600 border-emerald-400 text-white"
-                    : "bg-neutral-800 border-neutral-600 text-gray-200 hover:bg-neutral-700"
-                }`}
-                aria-pressed={voterCode.startsWith(proj)}
-              >
-                {proj}
-              </button>
-            ))}
-          </div>
+    {/* NBK / JP selection buttons */}
+    <div className="flex justify-center gap-4 mb-2">
+      {(["NBK", "JP"] as const).map((proj) => (
+        <button
+          key={proj}
+          type="button"
+          onClick={() => {
+            const digits = voterCode.replace(/^(NBK|JP)-?/i, "");
+            setVoterCode(proj + digits);
+            numInputRef.current?.focus();
+          }}
+          className={`px-5 py-2 rounded font-bold border transition-colors ${
+            voterCode.startsWith(proj)
+              ? "bg-emerald-600 border-emerald-400 text-white"
+              : "bg-neutral-800 border-neutral-600 text-gray-200 hover:bg-neutral-700"
+          }`}
+          aria-pressed={voterCode.startsWith(proj)}
+        >
+          {proj}
+        </button>
+      ))}
+    </div>
 
-          {/* Number entry + keypad */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setVoter(voterCode);
-            }}
-            className="space-y-3"
-          >
-            {/* auto-focus numeric input (mobile shows number pad) */}
-            <input
-              ref={numInputRef}
-              type="tel"
-              className="w-full border rounded p-3 text-black text-center text-xl tracking-widest"
-              placeholder="Enter your number (e.g., 23)"
-              value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
-                const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
-                setVoterCode(prefix + digits.padStart(4, "0"));
-              }}
-              inputMode="numeric"
-              pattern="\d{1,4}"
-              aria-label="Code number"
-            />
+    {/* number-only input (mobile shows native keypad) */}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        setVoter(voterCode);
+      }}
+      className="space-y-3"
+    >
+      <input
+        ref={numInputRef}
+        type="tel"
+        className="w-full border rounded p-3 text-black text-center text-xl tracking-widest"
+        placeholder="Enter your number (e.g., 23)"
+        value={voterCode.replace(/^(NBK|JP)-?/i, "").replace(/^0+/, "")}
+        onChange={(e) => {
+          const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
+          const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
+          setVoterCode(prefix + digits.padStart(4, "0"));
+        }}
+        inputMode="numeric"
+        aria-label="Code number"
+      />
 
-            {/* Onscreen keypad */}
-            <div className="grid grid-cols-3 gap-2 max-w-xs mx-auto select-none">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "←", "0", "↵"].map(
-                (key) => (
-                  <button
-                    key={key}
-                    type={key === "↵" ? "submit" : "button"}
-                    onClick={(e) => {
-                      if (key === "↵") return; // submit handled by form
-                      e.preventDefault();
-                      const prefix = voterCode.startsWith("JP") ? "JP" : "NBK";
-                      const currentDigits = voterCode.replace(
-                        /^(NBK|JP)-?/i,
-                        ""
-                      );
-                      if (key === "←") {
-                        const next = currentDigits.slice(0, -1);
-                        setVoterCode(
-                          prefix + (next.padStart(4, "0") || "0000")
-                        );
-                        numInputRef.current?.focus();
-                        return;
-                      }
-                      if (/^\d$/.test(key)) {
-                        const next = (
-                          currentDigits.replace(/^0+/, "") + key
-                        ).slice(0, 4);
-                        setVoterCode(prefix + next.padStart(4, "0"));
-                        numInputRef.current?.focus();
-                      }
-                    }}
-                    className="py-3 rounded border text-lg bg-neutral-800 border-neutral-600 hover:bg-neutral-700"
-                  >
-                    {key}
-                  </button>
-                )
-              )}
-            </div>
+      {/* Preview + Return */}
+      <div className="text-center text-sm text-gray-300">
+        Your code will be{" "}
+        <b>
+          {(voterCode.startsWith("JP") ? "JP" : "NBK") +
+            voterCode.replace(/^(NBK|JP)-?/i, "").padStart(4, "0")}
+        </b>
+      </div>
 
-            {/* Preview + Return button */}
-            <div className="text-center text-sm text-gray-300">
-              Your code will be{" "}
-              <b>
-                {(voterCode.startsWith("JP") ? "JP" : "NBK") +
-                  voterCode.replace(/^(NBK|JP)-?/i, "").padStart(4, "0")}
-              </b>
-            </div>
+      <button
+        type="submit"
+        className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+      >
+        Return
+      </button>
+    </form>
+  </section>
+)}
 
-            <button
-              type="submit"
-              className="w-full py-3 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-            >
-              Return
-            </button>
-          </form>
-        </section>
-      )}
 
       {/* STEP 2 — target */}
       {step === "target" && (
