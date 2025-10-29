@@ -22,6 +22,16 @@ type MonthTotal = {
   count: number;
 };
 
+type CompanyReceivedTotal = {
+  project: string;
+  companyName: string;
+  count: number;
+};
+
+const [monthCompanyReceivedTotals, setMonthCompanyReceivedTotals] = useState<
+  CompanyReceivedTotal[]
+>([]);
+
 // NEW: target totals
 type TargetTotal = {
   project: string;
@@ -123,6 +133,11 @@ export default function Page() {
       setTodayRows(rows);
 
       setMonthTotals(Array.isArray(json.monthTotals) ? json.monthTotals : []);
+      setMonthCompanyReceivedTotals(
+        Array.isArray(json.monthCompanyReceivedTotals)
+          ? json.monthCompanyReceivedTotals
+          : []
+      );
 
       const mRows: MonthRow[] | null = Array.isArray(json.monthRows)
         ? json.monthRows
@@ -147,18 +162,20 @@ export default function Page() {
   }, [selectedYM]);
 
   const fmtDateTime = (iso: string) => {
-  const d = new Date(iso);
-  if (Number.isNaN(+d)) return { date: "—", time: "" };
+    const d = new Date(iso);
+    if (Number.isNaN(+d)) return { date: "—", time: "" };
 
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  const date = `${yyyy}-${mm}-${dd}`;
-  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const date = `${yyyy}-${mm}-${dd}`;
+    const time = d.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
 
-  return { date, time };
-};
-
+    return { date, time };
+  };
 
   const monthVotesLabel = useMemo(() => {
     if (!selectedYM) return "Votes";
@@ -202,14 +219,13 @@ export default function Page() {
         </div>
 
         <div className="border rounded p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-sm text-gray-500">Selected Month</div>
-              <div className="text-lg">{monthKey || selectedYM || "—"}</div>
-            </div>
+          <div className="space-y-2">
+            <div className="text-sm text-gray-500">Selected Month</div>
 
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-1">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-lg">{monthKey || selectedYM || "—"}</div>
+
+              <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   className="px-2 py-1 border rounded text-sm"
                   onClick={() =>
@@ -220,12 +236,14 @@ export default function Page() {
                 >
                   ◀
                 </button>
+
                 <input
-                  className="border rounded px-2 py-1 text-sm"
+                  className="border rounded px-2 py-1 text-sm w-[120px] text-center"
                   type="month"
                   value={selectedYM}
                   onChange={(e) => setSelectedYM(e.target.value)}
                 />
+
                 <button
                   className="px-2 py-1 border rounded text-sm"
                   onClick={() =>
@@ -313,7 +331,7 @@ export default function Page() {
       {/* Totals by Voter Company */}
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">
-          By Company — {monthKey || selectedYM}
+          By Company — Tokens Given Out {monthKey || selectedYM}
         </h2>
         <div className="overflow-x-auto">
           <table className="min-w-full border text-sm">
@@ -339,6 +357,41 @@ export default function Page() {
                     colSpan={3}
                   >
                     No votes in this month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">
+          By Company — Tokens Received ({monthKey || selectedYM})
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="border px-2 py-1 text-left">Project</th>
+                <th className="border px-2 py-1 text-left">Company</th>
+                <th className="border px-2 py-1 text-right">Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthCompanyReceivedTotals.map((t, i) => (
+                <tr key={`${t.project}-${t.companyName}-${i}`}>
+                  <td className="border px-2 py-1">{t.project}</td>
+                  <td className="border px-2 py-1">{t.companyName}</td>
+                  <td className="border px-2 py-1 text-right">{t.count}</td>
+                </tr>
+              ))}
+              {monthCompanyReceivedTotals.length === 0 && (
+                <tr>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={3}
+                  >
+                    No token receivers this month.
                   </td>
                 </tr>
               )}

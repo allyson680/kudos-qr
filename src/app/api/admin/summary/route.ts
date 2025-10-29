@@ -202,6 +202,36 @@ export async function GET(req: Request) {
       (a, b) => b.count - a.count
     );
 
+    // ---- NEW: totals by TARGET COMPANY (most tokens received)
+    type CompanyReceivedTot = {
+      project: string;
+      companyName: string;
+      count: number;
+    };
+
+    const byTargetCompany = new Map<string, CompanyReceivedTot>();
+
+    for (const r of monthRows) {
+      // count only tokens
+      if (r.voteType && r.voteType !== "token") continue;
+
+      const project = r.project || "";
+      const companyName = r.targetCompany || "(Unknown)";
+      const key = `${project}|${companyName}`;
+
+      const cur = byTargetCompany.get(key) || {
+        project,
+        companyName,
+        count: 0,
+      };
+      cur.count += 1;
+      byTargetCompany.set(key, cur);
+    }
+
+    const monthCompanyReceivedTotals = Array.from(
+      byTargetCompany.values()
+    ).sort((a, b) => b.count - a.count);
+
     // 2️⃣ Group by TARGET name (who RECEIVED tokens)
     type TargetTot = {
       project: string;
@@ -240,7 +270,8 @@ export async function GET(req: Request) {
       todayRows,
       monthRows,
       monthTotals,
-      monthTargetTotals, // <-- NEW
+      monthTargetTotals,
+      monthCompanyReceivedTotals, // <-- NEW
     });
   } catch (e: any) {
     console.error(e);
