@@ -1,135 +1,124 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/firebaseAdmin";
-import { getProjectFromCode } from "@/lib/codeUtils";
+import { NextResponse } from "next/server";
+import admin, { getDb } from "@/lib/firebaseAdmin";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+const db = getDb();
 
-// Time zone (configurable). In Vercel set env var VOTE_TZ if you want local time.
-const TZ = process.env.VOTE_TZ || "UTC";
-
-// Format helpers (all keyed in TZ, stable for day/month grouping)
-function fmt(now = new Date(), opts: Intl.DateTimeFormatOptions) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, ...opts }).format(now);
+// ---- helpers
+function getCurrentYM() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
-function dayKey(now = new Date()) {
-  return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}-${fmt(
-    now,
-    { day: "2-digit" }
-  )}`;
+function startOfMonth(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1, 0, 0, 0, 0);
 }
-function monthKey(now = new Date()) {
-  return `${fmt(now, { year: "numeric" })}-${fmt(now, { month: "2-digit" })}`;
+function startOfNextMonth(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m, 1, 0, 0, 0, 0);
 }
 
-/**
- * Voting open policy: open the entire month (1st 00:00 TZ → last day 23:59:59 TZ).
- * No blackout dates inside the month.
- */
-function isVotingOpen(now = new Date()) {
-  const y = Number(fmt(now, { year: "numeric" }));
-  const m = Number(fmt(now, { month: "2-digit" })) - 1; // 0-based
-  const d = Number(fmt(now, { day: "2-digit" }));
-  const lastDay = new Date(y, m + 1, 0).getDate();
-  return d >= 1 && d <= lastDay;
-}
-
-// Safely turn Firestore Timestamp/Date/string into ISO string
-function toIso(val: any): string {
+export async function GET(req: Request) {
   try {
-    if (val?.toDate) return val.toDate().toISOString();
-    const d = new Date(val);
-    return Number.isNaN(+d) ? "" : d.toISOString();
-  } catch {
-    return "";
-  }
-}
+    const { searchParams } = new URL(req.url);
+    const ym = searchParams.get("month") || getCurrentYM();
 
-export async function GET(_req: NextRequest) {
-  const db = getDb();
-  try {
-    const now = new Date();
-    const dk = dayKey(now);
-    const mk = monthKey(now);
+    const todayKey = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const monthKey = ym;
 
-    // Pull today’s votes, all workers/companies, and this month’s votes in parallel
-    const [votesSnap, workersSnap, companiesSnap, monthSnap] = await Promise.all([
-      db.collection("votes").where("dayKey", "==", dk).get(),
-      db.collection("workers").get(),
-      db.collection("companies").get(),
-      db.collection("votes").where("monthKey", "==", mk).get(),
-    ]);
+    // --- TODAY (optional, keep your old logic if you have a special "today" endpoint)
+    // Example: show today using the same timestamp field
+    const startToday = new Date();
+    startToday.setHours(0, 0, 0, 0);
+    const endToday = new Date();
+    endToday.setHours(24, 0, 0, 0);
 
-    // Index workers for fast joins
-    const workers: Record<string, any> = {};
-    workersSnap.forEach((d) => {
-      workers[d.id] = d.data();
-    });
+    const todaySnap = await db
+      .collection("votes")
+      .where("voteTimestamp", ">=", admin.firestore.Timestamp.fromDate(startToday))
+      .where("voteTimestamp", "<", admin.firestore.Timestamp.fromDate(endToday))
+      .orderBy("voteTimestamp", "desc")
+      .get();
 
-    // Index companies (id -> name)
-    const companies: Record<string, string> = {};
-    companiesSnap.forEach((d) => {
-      companies[d.id] = (d.data() as any).name || d.id;
-    });
-    const companyName = (id?: string) => (id ? companies[id] || id : "—");
-
-    // Today’s rows
-    const todayRows = votesSnap.docs.map((d) => {
+    const todayRows = todaySnap.docs.map((d) => {
       const v = d.data() as any;
-      const voter = workers[v.voterCode] || {};
-      const target = workers[v.targetCode] || {};
-      const project = v.project || getProjectFromCode(v.voterCode || target.code || "");
-
+      const ts = v.voteTimestamp?.toDate?.() ?? v.voteTimestamp ?? new Date();
       return {
-        time: toIso(v.createdAt),
-        project,
+        time: new Date(ts).toISOString(),
+        project: v.project,
         voterCode: v.voterCode,
-        voterName: voter.fullName || "",
-        voterCompany: companyName(v.voterCompanyId || voter.companyId || v.companyId),
+        voterName: v.voterName,
+        voterCompany: v.voterCompany,
         targetCode: v.targetCode,
-        targetName: target.fullName || "",
-        targetCompany: companyName(v.targetCompanyId || target.companyId),
+        targetName: v.targetName,
+        targetCompany: v.targetCompany,
+        voteType: v.voteType,
       };
     });
 
-    // This month’s totals by (project, voterCompany)
-    const totals: Record<
-      string,
-      { project: string; companyId: string; companyName: string; count: number }
-    > = {};
+    // --- SELECTED MONTH
+    const start = startOfMonth(ym);
+    const end = startOfNextMonth(ym);
 
-    monthSnap.forEach((doc) => {
-      const v = doc.data() as any;
-      const voter = workers[v.voterCode] || {};
-      const project = v.project || getProjectFromCode(v.voterCode || "");
-      // Prefer voterCompanyId saved on the vote; fall back to voter.companyId
-      const cid: string = v.voterCompanyId || v.companyId || voter.companyId || "";
-      const key = `${project}__${cid}`;
-      if (!totals[key]) {
-        totals[key] = {
-          project,
-          companyId: cid,
-          companyName: companyName(cid),
-          count: 0,
-        };
-      }
-      totals[key].count += 1;
+    // If you store a string like voteMonth: "YYYY-MM", replace this query with:
+    // const monthSnap = await db.collection("votes").where("voteMonth", "==", ym).get();
+    const monthSnap = await db
+      .collection("votes")
+      .where("voteTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("voteTimestamp", "<", admin.firestore.Timestamp.fromDate(end))
+      .orderBy("voteTimestamp", "desc")
+      .get();
+
+    const monthRows = monthSnap.docs.map((d) => {
+      const v = d.data() as any;
+      const ts = v.voteTimestamp?.toDate?.() ?? v.voteTimestamp ?? new Date();
+      return {
+        time: new Date(ts).toISOString(),
+        project: v.project,
+        voterCode: v.voterCode,
+        voterName: v.voterName,
+        voterCompany: v.voterCompany,
+        targetCode: v.targetCode,
+        targetName: v.targetName,
+        targetCompany: v.targetCompany,
+        voteType: v.voteType,
+      };
     });
 
-    const monthTotals = Object.values(totals).sort((a, b) =>
-      a.project === b.project ? b.count - a.count : a.project.localeCompare(b.project)
-    );
+    // --- GROUP: By Company (voter company here; change if you group by target company)
+    type Tot = { companyId: string; companyName: string; project: string; count: number };
+    const totalsMap = new Map<string, Tot>();
+
+    for (const r of monthRows) {
+      // If you have IDs, prefer them; otherwise use the name as the key
+      const companyName = r.voterCompany ?? "(Unknown)";
+      const project = r.project ?? "";
+      const key = `${project}|${companyName}`;
+
+      const cur = totalsMap.get(key) || {
+        companyId: companyName, // replace with r.voterCompanyId if you have it
+        companyName,
+        project,
+        count: 0,
+      };
+      cur.count += 1;
+      totalsMap.set(key, cur);
+    }
+
+    const monthTotals = Array.from(totalsMap.values()).sort((a, b) => b.count - a.count);
+
+    // TODO: if you have a real "voting window" flag, compute it here
+    const votingOpen = true;
 
     return NextResponse.json({
-      ok: true,
-      votingOpen: isVotingOpen(now),
-      todayKey: dk,
-      monthKey: mk,
-      todayCount: todayRows.length,
+      votingOpen,
+      todayKey,
+      monthKey,
       todayRows,
-      monthTotals,
+      monthRows,   // <-- your updated page.tsx will use this
+      monthTotals, // <-- same shape as your UI
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Failed" }, { status: 500 });
+    console.error(e);
+    return NextResponse.json({ error: e?.message ?? "Server error" }, { status: 500 });
   }
 }
