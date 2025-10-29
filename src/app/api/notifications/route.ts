@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
       .collection("notifications")
       .where("targetCode", "==", targetCode)
       .where("read", "==", false)
-      .orderBy("createdAt", "desc")
+      .orderBy("__name__","desc")
       .limit(10)
       .get();
 

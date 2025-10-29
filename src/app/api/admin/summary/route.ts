@@ -1,3 +1,4 @@
+// src/app/api/admin/summary/route.ts
 import { NextResponse } from "next/server";
 import admin, { getDb } from "@/lib/firebaseAdmin";
 
@@ -8,8 +9,7 @@ function getCurrentYM() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 function getCurrentDayKey() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 }
 function isValidYM(ym: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(ym);
@@ -17,17 +17,22 @@ function isValidYM(ym: string) {
 
 function toRow(d: FirebaseFirestore.QueryDocumentSnapshot): any {
   const v = d.data() as any;
-  const ts = v.createdAt?.toDate?.() ?? new Date();
+  const ts =
+    v?.createdAt?.toDate?.() ??
+    v?.createdAt ??
+    v?.time ??
+    v?.voteTimestamp?.toDate?.() ??
+    new Date();
   return {
     id: d.id,
     time: new Date(ts).toISOString(),
     project: v.project,
     voterCode: v.voterCode,
     voterName: v.voterName,
-    voterCompany: v.voterCompanyId,
+    voterCompany: v.voterCompanyId ?? v.voterCompany, // support either
     targetCode: v.targetCode,
     targetName: v.targetName,
-    targetCompany: v.targetCompanyId,
+    targetCompany: v.targetCompanyId ?? v.targetCompany,
     voteType: v.voteType,
   };
 }
@@ -41,26 +46,27 @@ export async function GET(req: Request) {
     const todayKey = getCurrentDayKey();
     const monthKey = ym;
 
-    // --- TODAY (query by dayKey)
+    // --- TODAY: equality on dayKey + order by doc id to avoid composite index
     const todaySnap = await db
       .collection("votes")
       .where("dayKey", "==", todayKey)
-      .orderBy("createdAt", "desc")
+      .orderBy("__name__", "desc")
+      .limit(500)
       .get();
     const todayRows = todaySnap.docs.map(toRow);
 
-    // --- SELECTED MONTH (using monthKey!)
+    // --- MONTH: equality on monthKey + order by doc id to avoid composite index
     const monthSnap = await db
       .collection("votes")
       .where("monthKey", "==", ym)
-      .orderBy("createdAt", "desc")
+      .orderBy("__name__", "desc")
+      .limit(2000)
       .get();
     const monthRows = monthSnap.docs.map(toRow);
 
-    // --- GROUP totals by voterCompanyId
+    // --- GROUP totals by voterCompany (change to targetCompany if you prefer)
     type Tot = { companyId: string; companyName: string; project: string; count: number };
     const totalsMap = new Map<string, Tot>();
-
     for (const r of monthRows) {
       const companyName = r.voterCompany ?? "(Unknown)";
       const project = r.project ?? "";
@@ -74,9 +80,9 @@ export async function GET(req: Request) {
       cur.count += 1;
       totalsMap.set(key, cur);
     }
-
     const monthTotals = Array.from(totalsMap.values()).sort((a, b) => b.count - a.count);
 
+    // plug your real voting-window logic if you have one
     const votingOpen = true;
 
     return NextResponse.json({
