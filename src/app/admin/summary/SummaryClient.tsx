@@ -1,3 +1,4 @@
+// src/app/admin/summary/SummaryClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,17 +23,6 @@ type MonthTotal = {
   count: number;
 };
 
-type CompanyReceivedTotal = {
-  project: string;
-  companyName: string;
-  count: number;
-};
-
-const [monthCompanyReceivedTotals, setMonthCompanyReceivedTotals] = useState<
-  CompanyReceivedTotal[]
->([]);
-
-// NEW: target totals
 type TargetTotal = {
   project: string;
   targetCode?: string;
@@ -41,8 +31,11 @@ type TargetTotal = {
   count: number;
 };
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+type CompanyReceivedTotal = {
+  project: string;
+  companyName: string;
+  count: number;
+};
 
 function getCurrentYM() {
   const now = new Date();
@@ -62,7 +55,7 @@ function isValidYM(ym: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(ym);
 }
 
-export default function Page() {
+export default function SummaryClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,36 +67,32 @@ export default function Page() {
   const [todayRows, setTodayRows] = useState<TodayRow[]>([]);
   const [monthTotals, setMonthTotals] = useState<MonthTotal[]>([]);
   const [monthRows, setMonthRows] = useState<MonthRow[] | null>(null);
-
-  // NEW:
   const [monthTargetTotals, setMonthTargetTotals] = useState<TargetTotal[]>([]);
+  const [monthCompanyReceivedTotals, setMonthCompanyReceivedTotals] = useState<
+    CompanyReceivedTotal[]
+  >([]);
 
-  const exportRowsHref = useMemo(
-    () =>
-      `/api/admin/summary/export?month=${encodeURIComponent(
-        selectedYM
-      )}&type=rows`,
-    [selectedYM]
-  );
-  const exportTotalsHref = useMemo(
-    () =>
-      `/api/admin/summary/export?month=${encodeURIComponent(
-        selectedYM
-      )}&type=totals`,
-    [selectedYM]
-  );
-
+  // keep ?month in URL (client-only)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (selectedYM) params.set("month", selectedYM);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.replaceState({}, "", newUrl);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (selectedYM) params.set("month", selectedYM);
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      window.history.replaceState({}, "", newUrl);
+    } catch {
+      // ignore if not available
+    }
   }, [selectedYM]);
 
+  // read month from URL once
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const urlYm = params.get("month");
-    if (urlYm && isValidYM(urlYm)) setSelectedYM(urlYm);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlYm = params.get("month");
+      if (urlYm && isValidYM(urlYm)) setSelectedYM(urlYm);
+    } catch {
+      // ignore
+    }
   }, []);
 
   async function load(forYM?: string) {
@@ -113,12 +102,9 @@ export default function Page() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/admin/summary?month=${encodeURIComponent(ym)}`,
-        {
-          cache: "no-store",
-        }
-      );
+      const res = await fetch(`/api/admin/summary?month=${encodeURIComponent(ym)}`, {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
 
@@ -126,28 +112,23 @@ export default function Page() {
       setTodayKey(String(json.todayKey || ""));
       setMonthKey(String(json.monthKey || ym));
 
-      const rows: TodayRow[] = Array.isArray(json.todayRows)
-        ? json.todayRows
-        : [];
+      const rows: TodayRow[] = Array.isArray(json.todayRows) ? json.todayRows : [];
       rows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
       setTodayRows(rows);
 
       setMonthTotals(Array.isArray(json.monthTotals) ? json.monthTotals : []);
+
+      const mRows: MonthRow[] | null = Array.isArray(json.monthRows) ? json.monthRows : null;
+      if (mRows) mRows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
+      setMonthRows(mRows);
+
+      setMonthTargetTotals(
+        Array.isArray(json.monthTargetTotals) ? json.monthTargetTotals : []
+      );
       setMonthCompanyReceivedTotals(
         Array.isArray(json.monthCompanyReceivedTotals)
           ? json.monthCompanyReceivedTotals
           : []
-      );
-
-      const mRows: MonthRow[] | null = Array.isArray(json.monthRows)
-        ? json.monthRows
-        : null;
-      if (mRows) mRows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
-      setMonthRows(mRows);
-
-      // NEW:
-      setMonthTargetTotals(
-        Array.isArray(json.monthTargetTotals) ? json.monthTargetTotals : []
       );
     } catch (e: any) {
       setError(e?.message || "Failed to load summary");
@@ -164,16 +145,11 @@ export default function Page() {
   const fmtDateTime = (iso: string) => {
     const d = new Date(iso);
     if (Number.isNaN(+d)) return { date: "—", time: "" };
-
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     const date = `${yyyy}-${mm}-${dd}`;
-    const time = d.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
+    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     return { date, time };
   };
 
@@ -218,37 +194,30 @@ export default function Page() {
           <div className="text-lg">{todayKey || "—"}</div>
         </div>
 
+        {/* Selected Month card with arrows & input contained */}
         <div className="border rounded p-4">
           <div className="space-y-2">
             <div className="text-sm text-gray-500">Selected Month</div>
-
             <div className="flex items-center justify-between gap-2">
               <div className="text-lg">{monthKey || selectedYM || "—"}</div>
-
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   className="px-2 py-1 border rounded text-sm"
-                  onClick={() =>
-                    setSelectedYM((ym) => prevYM(ym || getCurrentYM()))
-                  }
+                  onClick={() => setSelectedYM((ym) => prevYM(ym || getCurrentYM()))}
                   aria-label="Previous month"
                   title="Previous month"
                 >
                   ◀
                 </button>
-
                 <input
                   className="border rounded px-2 py-1 text-sm w-[120px] text-center"
                   type="month"
                   value={selectedYM}
                   onChange={(e) => setSelectedYM(e.target.value)}
                 />
-
                 <button
                   className="px-2 py-1 border rounded text-sm"
-                  onClick={() =>
-                    setSelectedYM((ym) => nextYM(ym || getCurrentYM()))
-                  }
+                  onClick={() => setSelectedYM((ym) => nextYM(ym || getCurrentYM()))}
                   aria-label="Next month"
                   title="Next month"
                 >
@@ -260,7 +229,7 @@ export default function Page() {
         </div>
       </div>
 
-      {/* Month votes (or Today as fallback) */}
+      {/* Votes table */}
       <section className="space-y-2">
         <div className="flex items-baseline justify-between">
           <h2 className="text-xl font-semibold">
@@ -270,8 +239,7 @@ export default function Page() {
           </h2>
           {!monthRows && (
             <div className="text-xs text-gray-500">
-              (Tip: return <code>monthRows</code> from your API to see month
-              history here)
+              (Tip: return <code>monthRows</code> from your API to see month history here)
             </div>
           )}
         </div>
@@ -291,7 +259,7 @@ export default function Page() {
             <tbody>
               {(monthRows ?? todayRows).map((r, i) => (
                 <tr key={(r as any)?.id ?? `${r.time}-${r.voterCode}-${i}`}>
-                  <td className="border px-2 py-1">
+                  <td className="border px-2 py-1 leading-tight">
                     {(() => {
                       const dt = fmtDateTime(r.time);
                       return (
@@ -303,22 +271,15 @@ export default function Page() {
                     })()}
                   </td>
                   <td className="border px-2 py-1">{r.project}</td>
-                  <td className="border px-2 py-1">
-                    {r.voterName || r.voterCode}
-                  </td>
+                  <td className="border px-2 py-1">{r.voterName || r.voterCode}</td>
                   <td className="border px-2 py-1">{r.voterCompany || "—"}</td>
-                  <td className="border px-2 py-1">
-                    {r.targetName || r.targetCode}
-                  </td>
+                  <td className="border px-2 py-1">{r.targetName || r.targetCode}</td>
                   <td className="border px-2 py-1">{r.targetCompany || "—"}</td>
                 </tr>
               ))}
               {(monthRows ?? todayRows).length === 0 && (
                 <tr>
-                  <td
-                    className="border px-2 py-2 text-center text-gray-500"
-                    colSpan={6}
-                  >
+                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={6}>
                     {monthRows ? "No votes in this month." : "No votes today."}
                   </td>
                 </tr>
@@ -328,10 +289,10 @@ export default function Page() {
         </div>
       </section>
 
-      {/* Totals by Voter Company */}
+      {/* By Company — Given */}
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">
-          By Company — Tokens Given Out {monthKey || selectedYM}
+          By Company — {monthKey || selectedYM}
         </h2>
         <div className="overflow-x-auto">
           <table className="min-w-full border text-sm">
@@ -352,10 +313,7 @@ export default function Page() {
               ))}
               {monthTotals.length === 0 && (
                 <tr>
-                  <td
-                    className="border px-2 py-2 text-center text-gray-500"
-                    colSpan={3}
-                  >
+                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={3}>
                     No votes in this month.
                   </td>
                 </tr>
@@ -364,43 +322,8 @@ export default function Page() {
           </table>
         </div>
       </section>
-      <section className="space-y-2">
-        <h2 className="text-xl font-semibold">
-          By Company — Tokens Received ({monthKey || selectedYM})
-        </h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="border px-2 py-1 text-left">Project</th>
-                <th className="border px-2 py-1 text-left">Company</th>
-                <th className="border px-2 py-1 text-right">Tokens</th>
-              </tr>
-            </thead>
-            <tbody>
-              {monthCompanyReceivedTotals.map((t, i) => (
-                <tr key={`${t.project}-${t.companyName}-${i}`}>
-                  <td className="border px-2 py-1">{t.project}</td>
-                  <td className="border px-2 py-1">{t.companyName}</td>
-                  <td className="border px-2 py-1 text-right">{t.count}</td>
-                </tr>
-              ))}
-              {monthCompanyReceivedTotals.length === 0 && (
-                <tr>
-                  <td
-                    className="border px-2 py-2 text-center text-gray-500"
-                    colSpan={3}
-                  >
-                    No token receivers this month.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
-      {/* NEW: Top Targets (Most Tokens Received) */}
+      {/* Top Targets — Received */}
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">
           Top Targets — Tokens Received ({monthKey || selectedYM})
@@ -426,10 +349,41 @@ export default function Page() {
               ))}
               {monthTargetTotals.length === 0 && (
                 <tr>
-                  <td
-                    className="border px-2 py-2 text-center text-gray-500"
-                    colSpan={4}
-                  >
+                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={4}>
+                    No token receivers this month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Company Received — Tokens */}
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">
+          By Company — Tokens Received ({monthKey || selectedYM})
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="border px-2 py-1 text-left">Project</th>
+                <th className="border px-2 py-1 text-left">Company</th>
+                <th className="border px-2 py-1 text-right">Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthCompanyReceivedTotals.map((t, i) => (
+                <tr key={`${t.project}-${t.companyName}-${i}`}>
+                  <td className="border px-2 py-1">{t.project}</td>
+                  <td className="border px-2 py-1">{t.companyName}</td>
+                  <td className="border px-2 py-1 text-right">{t.count}</td>
+                </tr>
+              ))}
+              {monthCompanyReceivedTotals.length === 0 && (
+                <tr>
+                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={3}>
                     No token receivers this month.
                   </td>
                 </tr>
