@@ -421,7 +421,7 @@ export default function CodePage({ params }: { params: { code: string } }) {
                 className="w-full border rounded p-2"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="First Last"
+                placeholder="First & Last Name"
               />
             </label>
             <label className="block">
