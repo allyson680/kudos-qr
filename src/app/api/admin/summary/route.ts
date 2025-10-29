@@ -4,13 +4,12 @@ import admin, { getDb } from "@/lib/firebaseAdmin";
 
 const db = getDb();
 
-// --------- utils ----------
 function getCurrentYM() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 function getCurrentDayKey() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return new Date().toISOString().slice(0, 10);
 }
 function isValidYM(ym: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(ym);
@@ -24,19 +23,15 @@ function toISO(v: any) {
     new Date();
   return new Date(ts).toISOString();
 }
-
-// chunk helper for IN queries (Firestore max 10 ids per chunk)
 function chunk<T>(arr: T[], size = 10): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
   return out;
 }
 
-// fetch workers by codes (doc IDs are the codes, e.g. "NBK0023")
 async function fetchWorkersByCodes(codes: string[]) {
   const map = new Map<string, { fullName?: string; companyId?: string }>();
   if (codes.length === 0) return map;
-
   const idField = admin.firestore.FieldPath.documentId();
   for (const group of chunk(codes, 10)) {
     const snap = await db.collection("workers").where(idField, "in", group).get();
@@ -48,11 +43,9 @@ async function fetchWorkersByCodes(codes: string[]) {
   return map;
 }
 
-// fetch company names by IDs (doc IDs are company IDs; field "name")
 async function fetchCompaniesByIds(ids: string[]) {
   const map = new Map<string, string>();
   if (ids.length === 0) return map;
-
   const idField = admin.firestore.FieldPath.documentId();
   for (const group of chunk(ids, 10)) {
     const snap = await db.collection("companies").where(idField, "in", group).get();
@@ -64,7 +57,6 @@ async function fetchCompaniesByIds(ids: string[]) {
   return map;
 }
 
-// --------- route ----------
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -74,7 +66,7 @@ export async function GET(req: Request) {
     const todayKey = getCurrentDayKey();
     const monthKey = ym;
 
-    // --- pull votes (no composite index required)
+    // Pull votes (no composite index required)
     const todaySnap = await db
       .collection("votes")
       .where("dayKey", "==", todayKey)
@@ -89,7 +81,6 @@ export async function GET(req: Request) {
       .limit(2000)
       .get();
 
-    // Normalize rows (raw)
     type RawRow = {
       id: string;
       time: string;
@@ -111,7 +102,7 @@ export async function GET(req: Request) {
         project: v.project,
         voterCode: v.voterCode,
         voterName: v.voterName,
-        voterCompanyId: v.voterCompanyId ?? v.voterCompany, // support either key
+        voterCompanyId: v.voterCompanyId ?? v.voterCompany,
         targetCode: v.targetCode,
         targetName: v.targetName,
         targetCompanyId: v.targetCompanyId ?? v.targetCompany,
@@ -122,18 +113,10 @@ export async function GET(req: Request) {
     const todayRaw = todaySnap.docs.map(toRaw);
     const monthRaw = monthSnap.docs.map(toRaw);
 
-    // --- collect lookups (workers + companies)
+    // lookups
     const workerCodes = new Set<string>();
     const companyIds = new Set<string>();
-
-    for (const r of monthRaw) {
-      if (r.voterCode) workerCodes.add(r.voterCode);
-      if (r.targetCode) workerCodes.add(r.targetCode);
-      if (r.voterCompanyId) companyIds.add(r.voterCompanyId);
-      if (r.targetCompanyId) companyIds.add(r.targetCompanyId);
-    }
-    // include today's too (in case someone browses current day)
-    for (const r of todayRaw) {
+    for (const r of [...todayRaw, ...monthRaw]) {
       if (r.voterCode) workerCodes.add(r.voterCode);
       if (r.targetCode) workerCodes.add(r.targetCode);
       if (r.voterCompanyId) companyIds.add(r.voterCompanyId);
@@ -145,19 +128,16 @@ export async function GET(req: Request) {
       fetchCompaniesByIds([...companyIds]),
     ]);
 
-    // --- enrich rows
     const enrich = (rows: RawRow[]) =>
       rows.map((r) => {
         const voter = r.voterCode ? workersMap.get(r.voterCode) : undefined;
         const target = r.targetCode ? workersMap.get(r.targetCode) : undefined;
 
-        // Workers A: "Full Name (CODE)" if full name exists; else just CODE
         const voterDisplay =
           voter?.fullName ? `${voter.fullName} (${r.voterCode})` : r.voterCode ?? "";
         const targetDisplay =
           target?.fullName ? `${target.fullName} (${r.targetCode})` : r.targetCode ?? "";
 
-        // Companies: show name only (IDs still available in *_CompanyId)
         const voterCompanyName =
           (r.voterCompanyId && companiesMap.get(r.voterCompanyId)) || r.voterCompanyId || "";
         const targetCompanyName =
@@ -168,10 +148,10 @@ export async function GET(req: Request) {
           time: r.time,
           project: r.project,
           voterCode: r.voterCode,
-          voterName: voterDisplay, // <-- UI uses voterName || voterCode
-          voterCompany: voterCompanyName, // <-- UI column shows this
+          voterName: voterDisplay,
+          voterCompany: voterCompanyName,
           targetCode: r.targetCode,
-          targetName: targetDisplay, // <-- UI uses targetName || targetCode
+          targetName: targetDisplay,
           targetCompany: targetCompanyName,
           voteType: r.voteType,
         };
@@ -180,34 +160,63 @@ export async function GET(req: Request) {
     const todayRows = enrich(todayRaw);
     const monthRows = enrich(monthRaw);
 
-    // --- group totals by VOTER company name
-    type Tot = { companyId: string; companyName: string; project: string; count: number };
-    const totalsMap = new Map<string, Tot>();
+    // ---- totals by VOTER company (existing)
+    type CompanyTot = { companyId: string; companyName: string; project: string; count: number };
+    const byCompany = new Map<string, CompanyTot>();
     for (const r of monthRows) {
       const companyName = r.voterCompany || "(Unknown)";
       const project = r.project || "";
       const key = `${project}|${companyName}`;
-      const cur = totalsMap.get(key) || {
+      const cur = byCompany.get(key) || {
         companyId: companyName,
         companyName,
         project,
         count: 0,
       };
       cur.count += 1;
-      totalsMap.set(key, cur);
+      byCompany.set(key, cur);
     }
-    const monthTotals = Array.from(totalsMap.values()).sort((a, b) => b.count - a.count);
+    const monthTotals = Array.from(byCompany.values()).sort((a, b) => b.count - a.count);
 
-    // your real window logic can go here
+    // ---- NEW: totals by TARGET (most tokens received)
+    type TargetTot = {
+      project: string;
+      targetCode?: string;
+      targetName: string;
+      targetCompany?: string;
+      count: number;
+    };
+    const byTarget = new Map<string, TargetTot>();
+    for (const r of monthRows) {
+      if (r.voteType && r.voteType !== "token") continue; // only tokens
+      const project = r.project || "";
+      const code = r.targetCode || "";
+      const name = r.targetName || r.targetCode || "(Unknown)";
+      const company = r.targetCompany || "";
+      const key = `${project}|${code || name}`;
+
+      const cur = byTarget.get(key) || {
+        project,
+        targetCode: code || undefined,
+        targetName: name,
+        targetCompany: company || undefined,
+        count: 0,
+      };
+      cur.count += 1;
+      byTarget.set(key, cur);
+    }
+    const monthTargetTotals = Array.from(byTarget.values()).sort((a, b) => b.count - a.count);
+
     const votingOpen = true;
 
     return NextResponse.json({
       votingOpen,
-      todayKey: getCurrentDayKey(),
+      todayKey,
       monthKey,
       todayRows,
       monthRows,
       monthTotals,
+      monthTargetTotals, // <-- NEW
     });
   } catch (e: any) {
     console.error(e);
