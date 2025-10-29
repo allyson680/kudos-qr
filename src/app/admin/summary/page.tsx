@@ -1,4 +1,3 @@
-// src/app/admin/summary/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -70,11 +69,17 @@ export default function Page() {
   const [monthTargetTotals, setMonthTargetTotals] = useState<TargetTotal[]>([]);
 
   const exportRowsHref = useMemo(
-    () => `/api/admin/summary/export?month=${encodeURIComponent(selectedYM)}&type=rows`,
+    () =>
+      `/api/admin/summary/export?month=${encodeURIComponent(
+        selectedYM
+      )}&type=rows`,
     [selectedYM]
   );
   const exportTotalsHref = useMemo(
-    () => `/api/admin/summary/export?month=${encodeURIComponent(selectedYM)}&type=totals`,
+    () =>
+      `/api/admin/summary/export?month=${encodeURIComponent(
+        selectedYM
+      )}&type=totals`,
     [selectedYM]
   );
 
@@ -98,9 +103,12 @@ export default function Page() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/summary?month=${encodeURIComponent(ym)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/admin/summary?month=${encodeURIComponent(ym)}`,
+        {
+          cache: "no-store",
+        }
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
 
@@ -108,18 +116,24 @@ export default function Page() {
       setTodayKey(String(json.todayKey || ""));
       setMonthKey(String(json.monthKey || ym));
 
-      const rows: TodayRow[] = Array.isArray(json.todayRows) ? json.todayRows : [];
+      const rows: TodayRow[] = Array.isArray(json.todayRows)
+        ? json.todayRows
+        : [];
       rows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
       setTodayRows(rows);
 
       setMonthTotals(Array.isArray(json.monthTotals) ? json.monthTotals : []);
 
-      const mRows: MonthRow[] | null = Array.isArray(json.monthRows) ? json.monthRows : null;
+      const mRows: MonthRow[] | null = Array.isArray(json.monthRows)
+        ? json.monthRows
+        : null;
       if (mRows) mRows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
       setMonthRows(mRows);
 
       // NEW:
-      setMonthTargetTotals(Array.isArray(json.monthTargetTotals) ? json.monthTargetTotals : []);
+      setMonthTargetTotals(
+        Array.isArray(json.monthTargetTotals) ? json.monthTargetTotals : []
+      );
     } catch (e: any) {
       setError(e?.message || "Failed to load summary");
     } finally {
@@ -132,16 +146,19 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYM]);
 
- const fmtDateTime = (iso: string) => {
+  const fmtDateTime = (iso: string) => {
   const d = new Date(iso);
-  if (Number.isNaN(+d)) return "—";
-  // YYYY-MM-DD HH:MM AM/PM (date first, then time)
+  if (Number.isNaN(+d)) return { date: "—", time: "" };
+
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
+  const date = `${yyyy}-${mm}-${dd}`;
   const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return `${yyyy}-${mm}-${dd} ${time}`;
+
+  return { date, time };
 };
+
 
   const monthVotesLabel = useMemo(() => {
     if (!selectedYM) return "Votes";
@@ -195,7 +212,9 @@ export default function Page() {
               <div className="flex items-center gap-1">
                 <button
                   className="px-2 py-1 border rounded text-sm"
-                  onClick={() => setSelectedYM((ym) => prevYM(ym || getCurrentYM()))}
+                  onClick={() =>
+                    setSelectedYM((ym) => prevYM(ym || getCurrentYM()))
+                  }
                   aria-label="Previous month"
                   title="Previous month"
                 >
@@ -209,33 +228,14 @@ export default function Page() {
                 />
                 <button
                   className="px-2 py-1 border rounded text-sm"
-                  onClick={() => setSelectedYM((ym) => nextYM(ym || getCurrentYM()))}
+                  onClick={() =>
+                    setSelectedYM((ym) => nextYM(ym || getCurrentYM()))
+                  }
                   aria-label="Next month"
                   title="Next month"
                 >
                   ▶
                 </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href={`/api/admin/summary/export?month=${encodeURIComponent(selectedYM)}&type=rows`}
-                  className="px-3 py-2 border rounded text-sm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Export Month CSV
-                </a>
-                <a
-                  href={`/api/admin/summary/export?month=${encodeURIComponent(
-                    selectedYM
-                  )}&type=totals`}
-                  className="px-3 py-2 border rounded text-sm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Export Totals CSV
-                </a>
               </div>
             </div>
           </div>
@@ -252,7 +252,8 @@ export default function Page() {
           </h2>
           {!monthRows && (
             <div className="text-xs text-gray-500">
-              (Tip: return <code>monthRows</code> from your API to see month history here)
+              (Tip: return <code>monthRows</code> from your API to see month
+              history here)
             </div>
           )}
         </div>
@@ -261,7 +262,7 @@ export default function Page() {
           <table className="min-w-full border text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="border px-2 py-1 text-left">Date / Time</th>
+                <th className="border px-2 py-1 text-left">Date</th>
                 <th className="border px-2 py-1 text-left">Proj</th>
                 <th className="border px-2 py-1 text-left">Voter</th>
                 <th className="border px-2 py-1 text-left">Voter Company</th>
@@ -272,17 +273,34 @@ export default function Page() {
             <tbody>
               {(monthRows ?? todayRows).map((r, i) => (
                 <tr key={(r as any)?.id ?? `${r.time}-${r.voterCode}-${i}`}>
-                  <td className="border px-2 py-1">{fmtDateTime(r.time)}</td>
+                  <td className="border px-2 py-1">
+                    {(() => {
+                      const dt = fmtDateTime(r.time);
+                      return (
+                        <>
+                          <div>{dt.date}</div>
+                          <div className="text-xs text-gray-500">{dt.time}</div>
+                        </>
+                      );
+                    })()}
+                  </td>
                   <td className="border px-2 py-1">{r.project}</td>
-                  <td className="border px-2 py-1">{r.voterName || r.voterCode}</td>
+                  <td className="border px-2 py-1">
+                    {r.voterName || r.voterCode}
+                  </td>
                   <td className="border px-2 py-1">{r.voterCompany || "—"}</td>
-                  <td className="border px-2 py-1">{r.targetName || r.targetCode}</td>
+                  <td className="border px-2 py-1">
+                    {r.targetName || r.targetCode}
+                  </td>
                   <td className="border px-2 py-1">{r.targetCompany || "—"}</td>
                 </tr>
               ))}
               {(monthRows ?? todayRows).length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={6}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={6}
+                  >
                     {monthRows ? "No votes in this month." : "No votes today."}
                   </td>
                 </tr>
@@ -294,7 +312,9 @@ export default function Page() {
 
       {/* Totals by Voter Company */}
       <section className="space-y-2">
-        <h2 className="text-xl font-semibold">By Company — {monthKey || selectedYM}</h2>
+        <h2 className="text-xl font-semibold">
+          By Company — {monthKey || selectedYM}
+        </h2>
         <div className="overflow-x-auto">
           <table className="min-w-full border text-sm">
             <thead className="bg-gray-50">
@@ -314,7 +334,10 @@ export default function Page() {
               ))}
               {monthTotals.length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={3}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={3}
+                  >
                     No votes in this month.
                   </td>
                 </tr>
@@ -350,7 +373,10 @@ export default function Page() {
               ))}
               {monthTargetTotals.length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={4}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={4}
+                  >
                     No token receivers this month.
                   </td>
                 </tr>
