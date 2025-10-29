@@ -34,7 +34,10 @@ async function fetchWorkersByCodes(codes: string[]) {
   if (codes.length === 0) return map;
   const idField = admin.firestore.FieldPath.documentId();
   for (const group of chunk(codes, 10)) {
-    const snap = await db.collection("workers").where(idField, "in", group).get();
+    const snap = await db
+      .collection("workers")
+      .where(idField, "in", group)
+      .get();
     snap.docs.forEach((d) => {
       const w = d.data() as any;
       map.set(d.id, { fullName: w.fullName, companyId: w.companyId });
@@ -48,7 +51,10 @@ async function fetchCompaniesByIds(ids: string[]) {
   if (ids.length === 0) return map;
   const idField = admin.firestore.FieldPath.documentId();
   for (const group of chunk(ids, 10)) {
-    const snap = await db.collection("companies").where(idField, "in", group).get();
+    const snap = await db
+      .collection("companies")
+      .where(idField, "in", group)
+      .get();
     snap.docs.forEach((d) => {
       const c = d.data() as any;
       map.set(d.id, c?.name ?? d.id);
@@ -133,15 +139,21 @@ export async function GET(req: Request) {
         const voter = r.voterCode ? workersMap.get(r.voterCode) : undefined;
         const target = r.targetCode ? workersMap.get(r.targetCode) : undefined;
 
-        const voterDisplay =
-          voter?.fullName ? `${voter.fullName} (${r.voterCode})` : r.voterCode ?? "";
-        const targetDisplay =
-          target?.fullName ? `${target.fullName} (${r.targetCode})` : r.targetCode ?? "";
+        const voterDisplay = voter?.fullName
+          ? `${voter.fullName} (${r.voterCode})`
+          : r.voterCode ?? "";
+        const targetDisplay = target?.fullName
+          ? `${target.fullName} (${r.targetCode})`
+          : r.targetCode ?? "";
 
         const voterCompanyName =
-          (r.voterCompanyId && companiesMap.get(r.voterCompanyId)) || r.voterCompanyId || "";
+          (r.voterCompanyId && companiesMap.get(r.voterCompanyId)) ||
+          r.voterCompanyId ||
+          "";
         const targetCompanyName =
-          (r.targetCompanyId && companiesMap.get(r.targetCompanyId)) || r.targetCompanyId || "";
+          (r.targetCompanyId && companiesMap.get(r.targetCompanyId)) ||
+          r.targetCompanyId ||
+          "";
 
         return {
           id: r.id,
@@ -161,24 +173,36 @@ export async function GET(req: Request) {
     const monthRows = enrich(monthRaw);
 
     // ---- totals by VOTER company (existing)
-    type CompanyTot = { companyId: string; companyName: string; project: string; count: number };
-    const byCompany = new Map<string, CompanyTot>();
+    // --- GROUP TOTALS ---
+    // 1️⃣ Group by voter company (who GAVE tokens)
+    type ByCompany = {
+      companyId: string;
+      companyName: string;
+      project: string;
+      count: number;
+    };
+    const byCompanyMap = new Map<string, ByCompany>();
+
     for (const r of monthRows) {
       const companyName = r.voterCompany || "(Unknown)";
       const project = r.project || "";
       const key = `${project}|${companyName}`;
-      const cur = byCompany.get(key) || {
+
+      const cur = byCompanyMap.get(key) || {
         companyId: companyName,
         companyName,
         project,
         count: 0,
       };
       cur.count += 1;
-      byCompany.set(key, cur);
+      byCompanyMap.set(key, cur);
     }
-    const monthTotals = Array.from(byCompany.values()).sort((a, b) => b.count - a.count);
 
-    // ---- NEW: totals by TARGET (most tokens received)
+    const monthTotals = Array.from(byCompanyMap.values()).sort(
+      (a, b) => b.count - a.count
+    );
+
+    // 2️⃣ Group by TARGET name (who RECEIVED tokens)
     type TargetTot = {
       project: string;
       targetCode?: string;
@@ -186,26 +210,26 @@ export async function GET(req: Request) {
       targetCompany?: string;
       count: number;
     };
-    const byTarget = new Map<string, TargetTot>();
-    for (const r of monthRows) {
-      if (r.voteType && r.voteType !== "token") continue; // only tokens
-      const project = r.project || "";
-      const code = r.targetCode || "";
-      const name = r.targetName || r.targetCode || "(Unknown)";
-      const company = r.targetCompany || "";
-      const key = `${project}|${code || name}`;
+    const byTargetMap = new Map<string, TargetTot>();
 
-      const cur = byTarget.get(key) || {
-        project,
-        targetCode: code || undefined,
-        targetName: name,
-        targetCompany: company || undefined,
+    for (const r of monthRows) {
+      const tName = r.targetName || r.targetCode || "(Unknown)";
+      const key = `${r.project}|${tName}`;
+
+      const cur = byTargetMap.get(key) || {
+        project: r.project || "",
+        targetCode: r.targetCode,
+        targetName: tName,
+        targetCompany: r.targetCompany,
         count: 0,
       };
       cur.count += 1;
-      byTarget.set(key, cur);
+      byTargetMap.set(key, cur);
     }
-    const monthTargetTotals = Array.from(byTarget.values()).sort((a, b) => b.count - a.count);
+
+    const monthTargetTotals = Array.from(byTargetMap.values()).sort(
+      (a, b) => b.count - a.count
+    );
 
     const votingOpen = true;
 
@@ -220,6 +244,9 @@ export async function GET(req: Request) {
     });
   } catch (e: any) {
     console.error(e);
-    return NextResponse.json({ error: e?.message ?? "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message ?? "Server error" },
+      { status: 500 }
+    );
   }
 }

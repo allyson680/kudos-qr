@@ -132,11 +132,16 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYM]);
 
-  const fmtTime = (iso: string) => {
-    const d = new Date(iso);
-    if (Number.isNaN(+d)) return "—";
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  };
+ const fmtDateTime = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(+d)) return "—";
+  // YYYY-MM-DD HH:MM AM/PM (date first, then time)
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${yyyy}-${mm}-${dd} ${time}`;
+};
 
   const monthVotesLabel = useMemo(() => {
     if (!selectedYM) return "Votes";
@@ -256,7 +261,7 @@ export default function Page() {
           <table className="min-w-full border text-sm">
             <thead className="bg-gray-50">
               <tr>
-                <th className="border px-2 py-1 text-left">Time</th>
+                <th className="border px-2 py-1 text-left">Date / Time</th>
                 <th className="border px-2 py-1 text-left">Proj</th>
                 <th className="border px-2 py-1 text-left">Voter</th>
                 <th className="border px-2 py-1 text-left">Voter Company</th>
@@ -267,7 +272,7 @@ export default function Page() {
             <tbody>
               {(monthRows ?? todayRows).map((r, i) => (
                 <tr key={(r as any)?.id ?? `${r.time}-${r.voterCode}-${i}`}>
-                  <td className="border px-2 py-1">{fmtTime(r.time)}</td>
+                  <td className="border px-2 py-1">{fmtDateTime(r.time)}</td>
                   <td className="border px-2 py-1">{r.project}</td>
                   <td className="border px-2 py-1">{r.voterName || r.voterCode}</td>
                   <td className="border px-2 py-1">{r.voterCompany || "—"}</td>
