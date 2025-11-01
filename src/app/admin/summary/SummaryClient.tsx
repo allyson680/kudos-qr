@@ -17,7 +17,7 @@ type TodayRow = {
 type MonthRow = TodayRow;
 
 type MonthTotal = {
-  companyId: string;
+  companyId?: string;
   companyName: string;
   project: string;
   count: number;
@@ -67,32 +67,30 @@ export default function SummaryClient() {
   const [todayRows, setTodayRows] = useState<TodayRow[]>([]);
   const [monthTotals, setMonthTotals] = useState<MonthTotal[]>([]);
   const [monthRows, setMonthRows] = useState<MonthRow[] | null>(null);
+
+  // Tokens leaderboards from API
   const [monthTargetTotals, setMonthTargetTotals] = useState<TargetTotal[]>([]);
   const [monthCompanyReceivedTotals, setMonthCompanyReceivedTotals] = useState<
     CompanyReceivedTotal[]
   >([]);
 
-  // keep ?month in URL (client-only)
+  // Keep ?month in URL
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       if (selectedYM) params.set("month", selectedYM);
       const newUrl = `${window.location.pathname}?${params.toString()}`;
       window.history.replaceState({}, "", newUrl);
-    } catch {
-      // ignore if not available
-    }
+    } catch {}
   }, [selectedYM]);
 
-  // read month from URL once
+  // Read ?month once
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const urlYm = params.get("month");
       if (urlYm && isValidYM(urlYm)) setSelectedYM(urlYm);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
   async function load(forYM?: string) {
@@ -102,9 +100,12 @@ export default function SummaryClient() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/summary?month=${encodeURIComponent(ym)}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/admin/summary?month=${encodeURIComponent(ym)}`,
+        {
+          cache: "no-store",
+        }
+      );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
 
@@ -112,13 +113,17 @@ export default function SummaryClient() {
       setTodayKey(String(json.todayKey || ""));
       setMonthKey(String(json.monthKey || ym));
 
-      const rows: TodayRow[] = Array.isArray(json.todayRows) ? json.todayRows : [];
+      const rows: TodayRow[] = Array.isArray(json.todayRows)
+        ? json.todayRows
+        : [];
       rows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
       setTodayRows(rows);
 
       setMonthTotals(Array.isArray(json.monthTotals) ? json.monthTotals : []);
 
-      const mRows: MonthRow[] | null = Array.isArray(json.monthRows) ? json.monthRows : null;
+      const mRows: MonthRow[] | null = Array.isArray(json.monthRows)
+        ? json.monthRows
+        : null;
       if (mRows) mRows.sort((a, b) => +new Date(b.time) - +new Date(a.time));
       setMonthRows(mRows);
 
@@ -149,7 +154,10 @@ export default function SummaryClient() {
     const mm = String(d.getMonth() + 1).padStart(2, "0");
     const dd = String(d.getDate()).padStart(2, "0");
     const date = `${yyyy}-${mm}-${dd}`;
-    const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const time = d.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    });
     return { date, time };
   };
 
@@ -157,6 +165,55 @@ export default function SummaryClient() {
     if (!selectedYM) return "Votes";
     return `Votes — ${selectedYM}`;
   }, [selectedYM]);
+
+  // ---------- Good Catch derivations (all client-side) ----------
+  // Use month rows when available; otherwise fall back to today's rows
+  const sourceRows: MonthRow[] = useMemo(
+    () => monthRows ?? todayRows,
+    [monthRows, todayRows]
+  );
+
+  const goodCatchRows = useMemo(
+    () => sourceRows.filter((r) => r.voteType === "goodCatch"),
+    [sourceRows]
+  );
+
+  // Totals for goodCatch by target (person)
+  const goodCatchTargetTotals: TargetTotal[] = useMemo(() => {
+    const map = new Map<string, TargetTotal>();
+    for (const r of goodCatchRows) {
+      const project = r.project || "";
+      const tName = r.targetName || r.targetCode || "(Unknown)";
+      const tCompany = r.targetCompany || undefined;
+      const key = `${project}|${tName}|${tCompany ?? ""}`;
+      const cur = map.get(key) || {
+        project,
+        targetCode: r.targetCode,
+        targetName: tName,
+        targetCompany: tCompany,
+        count: 0,
+      };
+      cur.count += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [goodCatchRows]);
+
+  // Totals for goodCatch by company (received)
+  const goodCatchCompanyTotals: CompanyReceivedTotal[] = useMemo(() => {
+    const map = new Map<string, CompanyReceivedTotal>();
+    for (const r of goodCatchRows) {
+      const project = r.project || "";
+      const cName = (r.targetCompany || "(Unknown)").trim();
+      const key = `${project}|${cName}`;
+      const cur = map.get(key) || { project, companyName: cName, count: 0 };
+      cur.count += 1;
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  }, [goodCatchRows]);
+
+  // --------------------------------------------------------------
 
   return (
     <main className="max-w-5xl mx-auto p-6 space-y-6">
@@ -194,7 +251,7 @@ export default function SummaryClient() {
           <div className="text-lg">{todayKey || "—"}</div>
         </div>
 
-        {/* Selected Month card with arrows & input contained */}
+        {/* Selected Month card */}
         <div className="border rounded p-4">
           <div className="space-y-2">
             <div className="text-sm text-gray-500">Selected Month</div>
@@ -203,7 +260,9 @@ export default function SummaryClient() {
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   className="px-2 py-1 border rounded text-sm"
-                  onClick={() => setSelectedYM((ym) => prevYM(ym || getCurrentYM()))}
+                  onClick={() =>
+                    setSelectedYM((ym) => prevYM(ym || getCurrentYM()))
+                  }
                   aria-label="Previous month"
                   title="Previous month"
                 >
@@ -217,7 +276,9 @@ export default function SummaryClient() {
                 />
                 <button
                   className="px-2 py-1 border rounded text-sm"
-                  onClick={() => setSelectedYM((ym) => nextYM(ym || getCurrentYM()))}
+                  onClick={() =>
+                    setSelectedYM((ym) => nextYM(ym || getCurrentYM()))
+                  }
                   aria-label="Next month"
                   title="Next month"
                 >
@@ -239,7 +300,8 @@ export default function SummaryClient() {
           </h2>
           {!monthRows && (
             <div className="text-xs text-gray-500">
-              (Tip: return <code>monthRows</code> from your API to see month history here)
+              (Tip: return <code>monthRows</code> from your API to see month
+              history here)
             </div>
           )}
         </div>
@@ -271,15 +333,22 @@ export default function SummaryClient() {
                     })()}
                   </td>
                   <td className="border px-2 py-1">{r.project}</td>
-                  <td className="border px-2 py-1">{r.voterName || r.voterCode}</td>
+                  <td className="border px-2 py-1">
+                    {r.voterName || r.voterCode}
+                  </td>
                   <td className="border px-2 py-1">{r.voterCompany || "—"}</td>
-                  <td className="border px-2 py-1">{r.targetName || r.targetCode}</td>
+                  <td className="border px-2 py-1">
+                    {r.targetName || r.targetCode}
+                  </td>
                   <td className="border px-2 py-1">{r.targetCompany || "—"}</td>
                 </tr>
               ))}
               {(monthRows ?? todayRows).length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={6}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={6}
+                  >
                     {monthRows ? "No votes in this month." : "No votes today."}
                   </td>
                 </tr>
@@ -289,7 +358,7 @@ export default function SummaryClient() {
         </div>
       </section>
 
-      {/* By Company — Given */}
+      {/* By Company — Given (tokens) */}
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">
           By Company — {monthKey || selectedYM}
@@ -305,7 +374,7 @@ export default function SummaryClient() {
             </thead>
             <tbody>
               {monthTotals.map((m, i) => (
-                <tr key={`${m.project}-${m.companyId || m.companyName}-${i}`}>
+                <tr key={`${m.project}-${m.companyName}-${i}`}>
                   <td className="border px-2 py-1">{m.project}</td>
                   <td className="border px-2 py-1">{m.companyName}</td>
                   <td className="border px-2 py-1 text-right">{m.count}</td>
@@ -313,7 +382,10 @@ export default function SummaryClient() {
               ))}
               {monthTotals.length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={3}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={3}
+                  >
                     No votes in this month.
                   </td>
                 </tr>
@@ -323,7 +395,7 @@ export default function SummaryClient() {
         </div>
       </section>
 
-      {/* Top Targets — Received */}
+      {/* Tokens — Top Targets */}
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">
           Top Targets — Tokens Received ({monthKey || selectedYM})
@@ -349,7 +421,10 @@ export default function SummaryClient() {
               ))}
               {monthTargetTotals.length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={4}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={4}
+                  >
                     No token receivers this month.
                   </td>
                 </tr>
@@ -359,7 +434,7 @@ export default function SummaryClient() {
         </div>
       </section>
 
-      {/* Company Received — Tokens */}
+      {/* Tokens — Company Received */}
       <section className="space-y-2">
         <h2 className="text-xl font-semibold">
           By Company — Tokens Received ({monthKey || selectedYM})
@@ -383,8 +458,144 @@ export default function SummaryClient() {
               ))}
               {monthCompanyReceivedTotals.length === 0 && (
                 <tr>
-                  <td className="border px-2 py-2 text-center text-gray-500" colSpan={3}>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={3}
+                  >
                     No token receivers this month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Good Catches — rows */}
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">
+          Good Catches — {monthKey || selectedYM} ({goodCatchRows.length})
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="border px-2 py-1 text-left">Date</th>
+                <th className="border px-2 py-1 text-left">Proj</th>
+                <th className="border px-2 py-1 text-left">Reporter</th>
+                <th className="border px-2 py-1 text-left">Reporter Company</th>
+                <th className="border px-2 py-1 text-left">Target</th>
+                <th className="border px-2 py-1 text-left">Target Company</th>
+              </tr>
+            </thead>
+            <tbody>
+              {goodCatchRows.map((r, i) => (
+                <tr key={`${r.time}-${r.voterCode}-gc-${i}`}>
+                  <td className="border px-2 py-1 leading-tight">
+                    {(() => {
+                      const dt = fmtDateTime(r.time);
+                      return (
+                        <>
+                          <div>{dt.date}</div>
+                          <div className="text-xs text-gray-500">{dt.time}</div>
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td className="border px-2 py-1">{r.project}</td>
+                  <td className="border px-2 py-1">
+                    {r.voterName || r.voterCode}
+                  </td>
+                  <td className="border px-2 py-1">{r.voterCompany || "—"}</td>
+                  <td className="border px-2 py-1">
+                    {r.targetName || r.targetCode}
+                  </td>
+                  <td className="border px-2 py-1">{r.targetCompany || "—"}</td>
+                </tr>
+              ))}
+              {goodCatchRows.length === 0 && (
+                <tr>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={6}
+                  >
+                    No good catches {monthRows ? "this month" : "today"}.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Good Catches — totals by target */}
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">
+          Good Catches — Top Targets ({monthKey || selectedYM})
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="border px-2 py-1 text-left">Project</th>
+                <th className="border px-2 py-1 text-left">Target</th>
+                <th className="border px-2 py-1 text-left">Target Company</th>
+                <th className="border px-2 py-1 text-right">Reports</th>
+              </tr>
+            </thead>
+            <tbody>
+              {goodCatchTargetTotals.map((t, i) => (
+                <tr key={`${t.project}-${t.targetName}-${i}`}>
+                  <td className="border px-2 py-1">{t.project}</td>
+                  <td className="border px-2 py-1">{t.targetName}</td>
+                  <td className="border px-2 py-1">{t.targetCompany || "—"}</td>
+                  <td className="border px-2 py-1 text-right">{t.count}</td>
+                </tr>
+              ))}
+              {goodCatchTargetTotals.length === 0 && (
+                <tr>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={4}
+                  >
+                    No good catches this month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Good Catches — totals by company */}
+      <section className="space-y-2">
+        <h2 className="text-xl font-semibold">
+          Good Catches — By Company ({monthKey || selectedYM})
+        </h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="border px-2 py-1 text-left">Project</th>
+                <th className="border px-2 py-1 text-left">Company</th>
+                <th className="border px-2 py-1 text-right">Reports</th>
+              </tr>
+            </thead>
+            <tbody>
+              {goodCatchCompanyTotals.map((c, i) => (
+                <tr key={`${c.project}-${c.companyName}-${i}`}>
+                  <td className="border px-2 py-1">{c.project}</td>
+                  <td className="border px-2 py-1">{c.companyName}</td>
+                  <td className="border px-2 py-1 text-right">{c.count}</td>
+                </tr>
+              ))}
+              {goodCatchCompanyTotals.length === 0 && (
+                <tr>
+                  <td
+                    className="border px-2 py-2 text-center text-gray-500"
+                    colSpan={3}
+                  >
+                    No good catches this month.
                   </td>
                 </tr>
               )}
